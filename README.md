@@ -16,7 +16,6 @@ A simple command-line tool for viewing image/caption datasets pairs.
 
 ![Dataset Viewer](dataset-viewer/screenshot.png)
 
-
 ### Launcher
 
 A minimalist application launcher with search functionality and launch history tracking.
@@ -39,3 +38,11 @@ A minimal web browser shell for wrapping web applications in GTK windows.
 
 - **md2html**: A markdown to HTML converter with support for GFM, wiki-links, and syntax highlighting. Used by Chat and Notes.
 - **raise-or-open-url**: A utility to raise existing windows or open new ones based on URLs (niri, brotab)
+
+# Running and installing
+
+Add the input to your flake or run with nix:
+
+```bash
+nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#notes
+```
