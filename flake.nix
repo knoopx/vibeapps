@@ -17,6 +17,7 @@
       raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
       reminder = pkgs.callPackage ./reminder/reminder.nix {};
       webkit-shell = pkgs.callPackage ./webkit-shell/webkit-shell.nix {};
+      nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
     };
   };
 }

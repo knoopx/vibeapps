@@ -33,7 +33,7 @@
   };
 in
   pkgs.symlinkJoin {
-    name = "Chat.app";
+    name = "nix-packages";
     paths = [
       pkg
       (pkgs.makeDesktopItem {

@@ -28,6 +28,13 @@ A markdown note-taking application with wiki-links support and live preview.
 
 ![Notes](notes/screenshot.png)
 
+### Nixpkgs
+
+A simple interface to query and browser nix packages.
+
+![Notes](nixpkgs/screenshot.png)
+
+
 ### WebKit Shell
 
 A minimal web browser shell for wrapping web applications in GTK windows.
