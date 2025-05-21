@@ -28,11 +28,11 @@ A markdown note-taking application with wiki-links support and live preview.
 
 ![Notes](notes/screenshot.png)
 
-### Nixpkgs
+### Nix Packages
 
 A simple interface to query and browser nix packages.
 
-![Notes](nixpkgs/screenshot.png)
+![Nix Packages](nix-packages/screenshot.png)
 
 
 ### WebKit Shell
