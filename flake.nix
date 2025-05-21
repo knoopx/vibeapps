@@ -13,6 +13,7 @@
       launcher = pkgs.callPackage ./launcher/launcher.nix {};
       md2html = pkgs.callPackage ./md2html/md2html.nix {};
       mdx-editor = pkgs.callPackage ./mdx-editor/mdx-editor.nix {};
+      music = pkgs.callPackage ./music/music.nix {};
       notes = pkgs.callPackage ./notes/notes.nix {};
       raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
       reminder = pkgs.callPackage ./reminder/reminder.nix {};

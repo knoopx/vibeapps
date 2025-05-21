@@ -22,6 +22,12 @@ A minimalist application launcher with search functionality and launch history t
 
 ![Launcher](launcher/screenshot.png)
 
+### Music
+
+A minimalist music player with library management and queue functionality.
+
+![Music](music/screenshot.png)
+
 ### Notes
 
 A markdown note-taking application with wiki-links support and live preview.
