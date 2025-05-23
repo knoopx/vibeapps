@@ -718,9 +718,8 @@ class MusicPlayer(Adw.Application):
                     releases_to_save = list(self.all_releases.values())
                     cached_dirs_copy = dict(self.cached_dirs)
 
-                    # Write to a temporary file first
-                    temp_file = f"{self.cache_file}.tmp"
-                    with open(temp_file, "w") as f:
+                    # Write directly to the cache file
+                    with open(self.cache_file, "w") as f:
                         # Write header as first line
                         header = {
                             "timestamp": time.time(),
@@ -732,8 +731,6 @@ class MusicPlayer(Adw.Application):
                         for release in releases_to_save:
                             f.write(json.dumps(release.to_json()) + "\n")
 
-                    # Atomically replace the old file
-                    os.replace(temp_file, self.cache_file)
                     self._pending_save = False
 
             except Exception as e:
