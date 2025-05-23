@@ -122,6 +122,20 @@ class MainWindow(Adw.ApplicationWindow):
             .loading-page.compact picture {
                 -gtk-icon-size: 32px;
             }
+
+            .ghost-star {
+                padding: 4px;
+                min-width: 24px;
+                min-height: 24px;
+                opacity: 0.5;
+                background: none;
+                color: currentColor;
+            }
+
+            .ghost-star:hover {
+                opacity: 1;
+                background: none;
+            }
         """.encode()
         )
         Gtk.StyleContext.add_provider_for_display(
@@ -138,6 +152,7 @@ class MainWindow(Adw.ApplicationWindow):
         # Add star filter button
         self.star_filter = Gtk.ToggleButton(icon_name="non-starred-symbolic")
         self.star_filter.add_css_class("flat")
+        self.star_filter.add_css_class("ghost-star")
         self.star_filter.connect("toggled", self._on_star_filter_toggled)
         self.header.pack_end(self.star_filter)  # Changed from pack_start to pack_end
 
@@ -218,6 +233,20 @@ class MainWindow(Adw.ApplicationWindow):
 
             .loading-page.compact picture {
                 -gtk-icon-size: 32px;
+            }
+
+            .ghost-star {
+                padding: 4px;
+                min-width: 24px;
+                min-height: 24px;
+                opacity: 0.5;
+                background: none;
+                color: currentColor;
+            }
+
+            .ghost-star:hover {
+                opacity: 1;
+                background: none;
             }
         """.encode()
         )
@@ -331,6 +360,7 @@ class MainWindow(Adw.ApplicationWindow):
         # Add star button
         star_button = Gtk.Button(icon_name="non-starred-symbolic")
         star_button.add_css_class("flat")
+        star_button.add_css_class("ghost-star")
         star_button.set_valign(Gtk.Align.CENTER)
         box.append(star_button)
 
