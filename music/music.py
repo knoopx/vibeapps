@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 
-from math import pi
-from pathlib import Path
-from typing import Optional, List, Set, Dict
+from typing import List, Dict
 import concurrent.futures
 import gi
 import os
-import re
 import subprocess
 import threading
-from functools import cached_property
-import functools
+import json
+import time
+
+from circular_progress import CircularProgress
+from scanner import Scanner
+from release import Release
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -22,379 +23,11 @@ from gi.repository import (
     GLib,
     Gio,
     Gst,
-    GObject,
     Gdk,
+    Pango,  # Add this import
 )
 
-
-@GObject.type_register
-class Release(GObject.GObject):
-    title = GObject.Property(type=str)
-    artist = GObject.Property(type=str)
-    internal_year = GObject.Property(type=int, default=-1)
-    artwork_path = GObject.Property(type=str)
-    label = GObject.Property(type=str)
-
-    def __init__(self, title: str, artist: str, year: Optional[int] = None):
-        super().__init__()
-        self.title = title
-        self.artist = artist
-        self.year = year
-        self.tracks: List[Track] = []
-        self.artwork_path = None
-        self.tags: Set[str] = set()
-        self._release_name = None
-
-    @property
-    def year(self) -> Optional[int]:
-        return None if self.internal_year == -1 else self.internal_year
-
-    @year.setter
-    def year(self, value: Optional[int]):
-        self.internal_year = -1 if value is None else value
-
-    @cached_property
-    def sort_key(self):
-        return f"{self.artist}{self.title}"
-
-    # Delegate to ReleaseName
-    def tags_string(self) -> str:
-        return " · ".join(sorted(self.tags)) if self.tags else ""
-
-    def label_string(self) -> str:
-        return self.label if self.label else ""
-
-
-class ReleaseName(str):
-    def __new__(cls, content):
-        instance = super().__new__(cls, content)
-        # Initialize cached properties
-        instance._artist = None
-        instance._title = None
-        instance._year = None
-        instance._label = None
-        instance._tags = None
-        instance._is_split = None
-        return instance
-
-    def _clean_string(self, input: str, transforms: List[tuple] = None) -> str:
-        if transforms is None:
-            transforms = []
-
-        patterns = (
-            [
-                (r"(\([^\)]*\)?)+", "", 0),
-                (r"(\[[^\]]*\]?)+", "", 0),
-                (r"[_]+", " ", 0),
-                (r"\s+", " ", 0),
-                (r"\b\s*&\s*\b", " and ", 0),
-                (r"\b([_\'\-\s]+)n([_\'\-\s])+\b", " and ", 0),
-            ]
-            + transforms
-            + [(r"^[_\-\s]+", "", 0), (r"[_\-\s]+$", "", 0)]
-        )
-
-        result = input
-        for pattern, replacement, flags in patterns:
-            result = re.sub(pattern, replacement, result, flags=flags)
-            if not result.strip():
-                result = replacement
-        return result.strip()
-
-    def _extract_label_part(self) -> str:
-        match = re.search(r"[-]+(\d{4})[-]+(.*)$", self)
-        if match:
-            return match.group(2)
-
-        match = re.search(r"\b(\d{4})\b(.*)$", self)
-        if match:
-            return match.group(2)
-
-        return ""
-
-    @cached_property
-    def year(self) -> Optional[int]:
-        match = re.search(r"[-]+(\d{4})[-]+", self)
-        if not match:
-            match = re.search(r"\b(\d{4})\b", self)
-
-        if match:
-            try:
-                year = int(match.group(1))
-                if 1900 <= year <= 2100:
-                    return year
-            except ValueError:
-                pass
-        return None
-
-    @cached_property
-    def is_split(self) -> bool:
-        patterns = [
-            r"[-_\s]split[-_\s]",
-            r"\b\d+[-_\s]*artists\b",
-            r"[-_\s]vs[-_\s]",
-            r"[-_\s]with[-_\s]",
-            r"(?:^|[-_\s])and(?:[-_\s]|$)",  # Match "and" with boundaries
-            r"__",  # Double underscore often indicates split
-            r"[-_\s]&[-_\s]",  # Additional split indicator
-        ]
-        return any(re.search(pattern, self, re.I) for pattern in patterns)
-
-    def _extract_artists(self, text: str) -> List[str]:
-        # Split on common separators while preserving the separators in the result
-        separators = ["-", "_", " and ", " & ", "__"]
-        parts = [text]
-        for sep in separators:
-            new_parts = []
-            for part in parts:
-                if sep in part:
-                    split_parts = [p.strip() for p in part.split(sep)]
-                    new_parts.extend(p for p in split_parts if p)
-                else:
-                    new_parts.append(part)
-            parts = new_parts
-        return [
-            p
-            for p in parts
-            if p and not re.match(r"^(split|ep|vinyl|cd|web)$", p, re.I)
-        ]
-
-    @cached_property
-    def title(self) -> str:
-        # Special case for names like "1982_Trio-A-B-2014-gF"
-        special_match = re.match(r"^([^-]+)-([^-]+(?:-[^-]+)*)-(\d{4})-([^-]+)$", self)
-        if special_match:
-            title_part = special_match.group(2)
-        elif "--" in self:
-            parts = self.split("--", 1)
-            title_part = parts[1]
-        else:
-            parts = self.split("-", 1)
-            title_part = parts[1] if len(parts) > 1 else parts[0]
-
-        # Special handling for split releases
-        if self.is_split:
-            # Extract all artists from the title part
-            artists = self._extract_artists(title_part)
-            if artists:
-                # Join artists with " / " for display
-                title_part = " / ".join(artists)
-
-        # Updated title cleaning transforms
-        title_transforms = [
-            # Convert '_' to spaces first
-            (r"_", " ", 0),
-            # Extract and clean up series/volumes
-            (
-                r"(?i)(single[\s_]*serie[s]?[\s_]*(?:part[\s_]*)?(\d+))",
-                r"Single Series Part \2",
-                0,
-            ),
-            # Remove inch measurements completely
-            (r"(?i)(\d+[\s_]*(?:inch|\"|\u201D))", "", 0),
-            # Move format/media info to tags
-            (r"(?i)\b(vinyl|cd|web|tape|digital)\b", "", 0),
-            # Clean up region codes
-            (r"-([A-Z]{2})-", "", 0),
-            # Remove year and anything after
-            (r"[-]+\d{4}[-]+.*$", "", 0),
-            (r"\b\d{4}\b.*$", "", 0),
-            # Other existing transforms
-            (r"\b(TRACKFIX|DIRFIX|READ[\-\s]*NFO)\b", "", re.I),
-            (
-                r"\b(S[\-\_\s\.]*T[\-\_\s\.]|SELF[\-\_\s\.]*TITLED)\b",
-                "Self-Titled",
-                re.I,
-            ),
-            (r"\b((RE[\-\s]*)?(MASTERED|ISSUE|PACKAGE|EDITION))\b", "", re.I),
-            (
-                r"\b(ADVANCE|PROMO|SAMPLER|PROPER|RERIP|RETAIL|REMIX|BONUS|LTD\.?|LIMITED)\b",
-                "",
-                re.I,
-            ),
-            (
-                r"\b(CDM|CDEP|CDR|CDS|CD|MCD|DVDA|DVD|TAPE|VINYL|VLS|WEB|SAT|CABLE)\b",
-                "",
-                re.I,
-            ),
-            (r"\b(EP|LP|BOOTLEG|SINGLE)\b", "", re.I),
-            (r"\b(WEB|FLAC|MP3|320|V0|V2|AAC)\b", "", re.I),
-            (r"\b(VA|OST)\b[\-\s]*", "", re.I),
-            (r"\bsplit\b", "", re.I),
-            # Clean up multiple spaces and trim
-            (r"\s+", " ", 0),
-        ]
-
-        return self._clean_string(title_part, title_transforms)
-
-    @property
-    def artist(self) -> str:
-        if self._artist is None:
-            # Special case for names like "1982_Trio-A-B-2014-gF"
-            special_match = re.match(
-                r"^([^-]+)-([^-]+(?:-[^-]+)*)-(\d{4})-([^-]+)$", self
-            )
-            if special_match:
-                artist_part = special_match.group(1)
-            # Process splits differently
-            elif self.is_split:
-                if "--" in self:
-                    artist_part = self.split("--", 1)[0]
-                else:
-                    artist_part = self.split("-", 1)[0]
-
-                artists = self._extract_artists(artist_part)
-                if artists:
-                    # Join multiple artists with " / "
-                    self._artist = " / ".join(artists)
-                else:
-                    self._artist = "Various Artists"  # Fallback for splits
-                return self._artist
-            else:
-                # Regular releases
-                if "--" in self:
-                    artist_part = self.split("--", 1)[0]
-                else:
-                    artist_part = self.split("-", 1)[0]
-
-            # Clean up the artist name using existing method
-            self._artist = self._clean_string(artist_part)
-        return self._artist
-
-    @cached_property
-    def tags(self) -> Set[str]:
-        tags = set()
-        if self.is_split:
-            tags.add("Split")
-
-        format_patterns = [
-            (r"(?i)(\d+)\s*(?:inch|\"|\u201D)", r'\1"'),
-            (r"(?i)\b(vinyl|cd|web|tape|digital)\b", r"\1"),
-        ]
-
-        for pattern, tag_format in format_patterns:
-            match = re.search(pattern, self, re.I)
-            if match:
-                tags.add(match.expand(tag_format).title())
-
-        # Add region code if present
-        region_match = re.search(r"-([A-Z]{2})-", self)
-        if region_match:
-            tags.add(region_match.group(1))
-
-        # Only add INT tag here, group name will be handled separately
-        if self.endswith("_INT") or re.search(r"[-]([A-Za-z0-9]+)_INT$", self):
-            tags.add("INT")
-
-        return tags
-
-    @cached_property
-    def label(self) -> str:
-        # Extract group name separately from _INT suffix
-        int_group_match = re.search(r"[-]([A-Za-z0-9]+)_INT$", self)
-        if int_group_match:
-            return int_group_match.group(1)  # Return just the group name
-
-        # Handle regular group/label
-        if scene_match := re.search(r"[-]([A-Za-z0-9]+)$", self):
-            return scene_match.group(1)
-
-        # Fall back to standard label extraction for other cases
-        return self._clean_string(self._extract_label_part())
-
-
-class TrackName:
-    def __init__(self, name: str):
-        self.raw_name = name
-        self._parse()
-
-    def _parse(self):
-        # Add track-specific parsing logic here when needed
-        pass
-
-
-class Track:
-    ARTWORK_PATTERNS = [
-        "*cover*.*",
-        "*artwork*.*",
-        "*front*.*",
-        "folder.*",
-        "*.jpg",
-        "*.jpeg",
-        "*.png",
-    ]
-
-    def __init__(self, path):
-        self.path = path
-        self.release = None  # Will be set when added to a Release
-        self.artwork_path = self._find_artwork()
-
-    def _find_artwork(self) -> Optional[str]:
-        directory = os.path.dirname(self.path)
-        for pattern in self.ARTWORK_PATTERNS:
-            for file in Path(directory).glob(pattern):
-                if file.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-                    return str(file)
-        return None
-
-
-class Scanner:
-    def __init__(self):
-        # The scanner itself doesn't need to store all releases anymore
-        pass
-
-    # Modify scan_directory to process a single directory
-    def scan_single_directory(self, path: str) -> List[Release]:
-        """Scans a single directory for music files and returns a list of Releases found."""
-        release_tracks: Dict[str, List[Track]] = {}
-        releases_in_dir: List[Release] = []
-
-        # Find tracks in this specific directory
-        try:
-            for file in os.listdir(path):
-                full_path = os.path.join(path, file)
-                if os.path.isfile(full_path) and file.lower().endswith(
-                    (".mp3", ".flac")
-                ):
-                    try:
-                        track = Track(full_path)
-                        # Use directory path as unique key for releases within this function
-                        key = os.path.dirname(track.path)  # This will be 'path'
-                        if key not in release_tracks:
-                            release_tracks[key] = []
-                        release_tracks[key].append(track)
-                    except Exception as e:
-                        # Log error but continue scanning
-                        print(f"Error scanning track {full_path}: {e}")
-        except Exception as e:
-            # Log error for directory listing
-            print(f"Error listing directory {path}: {e}")
-            return []  # Return empty list if directory listing fails
-
-        # Create or update releases for this directory
-        for key, tracks in release_tracks.items():
-            # Assuming one release per directory for simplicity based on current Track parsing
-            if tracks:
-                dirname = os.path.basename(key)
-                release_name = ReleaseName(dirname)
-                release = Release(
-                    release_name.title, release_name.artist, release_name.year
-                )
-                release._release_name = release_name  # Store reference
-                release.artwork_path = tracks[0].artwork_path
-                release.label = release_name.label
-                release.tags = release_name.tags
-
-                # Set release reference for each track
-                for track in tracks:
-                    track.release = release
-
-                release.tracks = sorted(tracks, key=lambda t: t.path)
-                releases_in_dir.append(release)
-
-        return releases_in_dir
-
-    # The main scan method will be handled by the MusicPlayer now using this single-directory scanner
+MUSIC_DIR = "/mnt/music/"
 
 
 class SearchFilter(Gtk.Filter):
@@ -418,36 +51,6 @@ class SearchFilter(Gtk.Filter):
 
     def do_get_strictness(self):
         return Gtk.FilterMatch.SOME
-
-
-class CircularProgress(Gtk.DrawingArea):
-    def __init__(self):
-        super().__init__()
-        self.fraction = 0
-        self.set_content_width(18)
-        self.set_content_height(18)
-        self.set_draw_func(self._draw)
-
-    def _draw(self, area, cr, width, height):
-        radius = min(width, height) / 2
-
-        # Draw background circle
-        cr.arc(width / 2, height / 2, radius, 0, 2 * pi)
-        cr.set_source_rgba(0.5, 0.5, 0.5, 0.2)
-        cr.fill()
-
-        # Draw progress arc
-        if self.fraction > 0:
-            cr.arc(
-                width / 2, height / 2, radius, -pi / 2, (2 * self.fraction - 0.5) * pi
-            )
-            cr.line_to(width / 2, height / 2)
-            cr.set_source_rgba(0.5, 0.5, 0.5, 0.8)
-            cr.fill()
-
-    def set_fraction(self, fraction):
-        self.fraction = fraction
-        self.queue_draw()
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -554,6 +157,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_album_setup(self, factory, list_item):
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        box.set_hexpand(True)  # Make box expand horizontally
         box.set_margin_start(9)
         box.set_margin_end(9)
         box.set_margin_top(6)
@@ -567,31 +171,44 @@ class MainWindow(Adw.ApplicationWindow):
         box.add_controller(gesture)
 
         info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        info_box.set_hexpand(True)
         info_box.set_valign(Gtk.Align.CENTER)
 
-        title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        title_box.add_css_class("title-box")
-        title_box.set_valign(Gtk.Align.CENTER)
+        upper_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        upper_box.set_hexpand(True)
+
+        # Create box for just title and year that will stay together
+        title_year_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        title_year_box.set_hexpand(True)
 
         title = Gtk.Label(xalign=0, css_classes=["title"])
         title.add_css_class("heading")
         title.set_valign(Gtk.Align.CENTER)
-        title_box.append(title)
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        title_year_box.append(title)
 
         year = Gtk.Label(xalign=0)
         year.add_css_class("caption")
         year.add_css_class("dim-label")
         year.set_valign(Gtk.Align.CENTER)
-        title_box.append(year)
+        year.set_hexpand(True)
+        year.set_wrap(False)
+        title_year_box.append(year)
 
+        # Add title_year_box to upper_box first
+        upper_box.append(title_year_box)
+
+        # Then add tags_box to upper_box
         tags_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=3)
-        title_box.append(tags_box)
+        tags_box.set_hexpand(False)
+        upper_box.append(tags_box)
 
         artist = Gtk.Label(xalign=0, css_classes=["artist"])
         artist.add_css_class("caption")
         artist.set_opacity(0.7)
+        artist.set_ellipsize(Pango.EllipsizeMode.END)  # Add ellipsis for overflow
 
-        info_box.append(title_box)
+        info_box.append(upper_box)
         info_box.append(artist)
 
         box.append(info_box)
@@ -602,17 +219,17 @@ class MainWindow(Adw.ApplicationWindow):
         release = list_item.get_item()
 
         info_box = box.get_first_child()
-        title_box = info_box.get_first_child()
+        upper_box = info_box.get_first_child()
+        title_year_box = upper_box.get_first_child()
+        tags_box = upper_box.get_last_child()
 
-        title_label = title_box.get_first_child()
-        year_label = title_label.get_next_sibling()
-        tags_box = year_label.get_next_sibling()
+        title = title_year_box.get_first_child()
+        year = title_year_box.get_last_child()
+        artist = info_box.get_last_child()
 
-        artist_label = title_box.get_next_sibling()
-
-        title_label.set_text(release.title)
-        year_label.set_text(str(release.year) if release.year else "")
-        artist_label.set_text(release.artist)
+        title.set_text(release.title)
+        year.set_text(str(release.year) if release.year else "")
+        artist.set_text(release.artist)
 
         # Remove old tags and label pills
         while tags_box.get_first_child():
@@ -707,6 +324,16 @@ class MainWindow(Adw.ApplicationWindow):
 class MusicPlayer(Adw.Application):
     def __init__(self):
         super().__init__(application_id="org.knoopx.music")
+        # Get XDG_DATA_HOME or fallback to ~/.local/share
+        data_home = os.environ.get(
+            "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
+        )
+        app_data_dir = os.path.join(data_home, "music")
+
+        # Ensure directory exists
+        os.makedirs(app_data_dir, exist_ok=True)
+
+        self.cache_file = os.path.join(app_data_dir, "releases.json")
         self.scanner = Scanner()
         self.all_releases: Dict[str, Release] = (
             {}
@@ -720,20 +347,73 @@ class MusicPlayer(Adw.Application):
         self.lookup_action("reveal_in_file_explorer").connect(
             "activate", self.on_reveal_in_file_explorer
         )
+        self.last_scan_time = 0
+        self.CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
+
+    def load_cached_data(self):
+        """Load releases from cache if available and not too old"""
+        def load_cache_thread():
+            try:
+                if os.path.exists(self.cache_file):
+                    cache_stat = os.stat(self.cache_file)
+                    if time.time() - cache_stat.st_mtime < self.CACHE_TTL:
+                        with open(self.cache_file, "r") as f:
+                            data = json.load(f)
+                            self.last_scan_time = data.get("timestamp", 0)
+                            releases_data = data.get("releases", [])
+
+                            releases = []
+                            for release_data in releases_data:
+                                try:
+                                    release = Release.from_json(release_data)
+                                    releases.append(release)
+                                    # Update global collection
+                                    key = (
+                                        os.path.dirname(release.tracks[0].path)
+                                        if release.tracks
+                                        else None
+                                    )
+                                    if key:
+                                        self.all_releases[key] = release
+                                except Exception as e:
+                                    print(f"Error loading release from cache: {e}")
+
+                            # Sort releases before sending to UI
+                            releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                            GLib.idle_add(self._apply_cached_data, releases)
+                            return
+            except Exception as e:
+                print(f"Error loading cache: {e}")
+            GLib.idle_add(self.load_library)
+
+        thread = threading.Thread(target=load_cache_thread, daemon=True)
+        thread.start()
+
+    def _apply_cached_data(self, releases):
+        """Apply cached data to the UI (called on main thread)"""
+        window = self.get_active_window()
+        if window:
+            window.albums_model.splice(0, 0, releases)
+        # Start fresh scan after loading cache
+        self.load_library()
+        return False
 
     def do_activate(self):
         win = MainWindow(application=self)
         win.present()
-        self.load_library()
+        # Just start loading cache, which will trigger scan when done
+        self.load_cached_data()
 
     def load_library(self):
         window = self.get_active_window()
         window.start_loading()
-        self.all_releases = {}  # Clear previous scan results
-        window.albums_model.remove_all()  # Clear the UI model using remove_all()
+        # Don't clear existing releases or model when starting scan
+        if not self.all_releases:
+            self.all_releases = {}
+            window.albums_model.remove_all()
 
         def scan_thread():
-            music_dir = "/mnt/music/"
+            music_dir = MUSIC_DIR
             directories_to_scan = []
             total_directories = 0
             processed_directories = 0
@@ -825,20 +505,40 @@ class MusicPlayer(Adw.Application):
         # Start the thread that manages the thread pool
         thread = threading.Thread(target=scan_thread, daemon=True)
         thread.start()
-
     # Modified on_batch_complete to just append the batch
     def on_batch_complete(self, batch):
         """Appends a batch of releases to the UI model."""
-        window = self.get_active_window()
-        window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
+        def update_ui():
+            window = self.get_active_window()
+            if window:
+                window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
+            return False
+
+        # Save to cache after batch is processed
+        self.save_to_cache()
+        # Ensure UI updates happen on the main thread
+        GLib.idle_add(update_ui)
         return False
+
+    def save_to_cache(self):
+        """Save current releases to cache file"""
+        try:
+            # Create a static copy of releases before serializing
+            releases_list = list(self.all_releases.values())
+            data = {
+                "timestamp": time.time(),
+                "releases": [release.to_json() for release in releases_list],
+            }
+            with open(self.cache_file, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Error saving cache: {e}")
 
     def on_scan_complete(self):
         """Signals the end of the scanning process."""
         window = self.get_active_window()
         window.stop_loading()
         print(f"Scan complete. Found {len(self.all_releases)} releases.")
-        return False
 
     def on_reveal_in_file_explorer(self, action, parameter):
         """Reveals the selected release's directory in the file explorer."""
@@ -851,7 +551,6 @@ class MusicPlayer(Adw.Application):
                 Gtk.show_uri(window, f"file://{folder}", Gdk.CURRENT_TIME)
             except Exception as e:
                 print(f"Error opening directory {folder}: {e}")
-
 
 if __name__ == "__main__":
     Gst.init(None)
