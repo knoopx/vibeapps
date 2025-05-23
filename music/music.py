@@ -372,7 +372,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_row_activated(self, list_view, position):
         if self.selected_release and self.selected_release.tracks:
             folder = os.path.dirname(self.selected_release.tracks[0].path)
-            launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.NONE)
+            launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.SPAWN_SEARCH_PATH)
             launcher.spawnv(['amberol', folder])
 
     def _on_search_changed(self, search):
