@@ -551,9 +551,16 @@ class MusicPlayer(Adw.Application):
                 new_dirs = []
                 cached_dirs = []
 
+                # Check shutdown flag early
+                if self._shutdown_event.is_set():
+                    return
+
                 # First pass to categorize directories
                 try:
                     for root, dirs, files in os.walk(music_dir):
+                        # Check shutdown flag during walk
+                        if self._shutdown_event.is_set():
+                            return
                         if any(f.lower().endswith((".mp3", ".flac")) for f in files):
                             dir_mtime = os.path.getmtime(root)
                             cached_time = self.cached_dirs.get(root, 0)
@@ -590,6 +597,12 @@ class MusicPlayer(Adw.Application):
                     }
 
                     for future in concurrent.futures.as_completed(futures):
+                        # Check shutdown flag during processing
+                        if self._shutdown_event.is_set():
+                            for f in futures:
+                                f.cancel()
+                            return
+
                         dir_path = futures[future]
                         processed_directories += 1
                         try:
@@ -636,6 +649,7 @@ class MusicPlayer(Adw.Application):
         thread = threading.Thread(target=scan_thread, daemon=True)
         self._active_threads.append(thread)
         thread.start()
+
     # Modified on_batch_complete to just append the batch
     def on_batch_complete(self, batch):
         """Appends a batch of releases to the UI model."""
@@ -717,12 +731,34 @@ class MusicPlayer(Adw.Application):
     def quit(self):
         print("Shutting down threads...")
         self._shutdown_event.set()
-        self.executor.shutdown(wait=True)
 
-        # Wait for active threads to finish
+        # First attempt graceful shutdown of executor
+        self.executor.shutdown(wait=False)
+        try:
+            # Clear internal thread references
+            self.executor._threads.clear()
+            # Final shutdown attempt
+            self.executor.shutdown(wait=True)
+        except Exception as e:
+            print(f"Warning: Error during executor shutdown: {e}")
+
+        # Then handle active threads
+        remaining_threads = []
         for thread in self._active_threads:
             if thread.is_alive():
-                thread.join(timeout=1.0)
+                try:
+                    thread.join(timeout=1.0)
+                    if thread.is_alive():
+                        remaining_threads.append(thread)
+                except Exception as e:
+                    print(f"Warning: Error joining thread: {e}")
+
+        if remaining_threads:
+            print(f"Warning: {len(remaining_threads)} threads didn't shut down cleanly")
+
+        # Save cache one last time before quitting
+        if self._pending_save:
+            self._do_save_cache()
 
         super().quit()
 
