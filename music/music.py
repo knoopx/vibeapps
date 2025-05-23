@@ -37,6 +37,7 @@ class SearchFilter(Gtk.Filter):
         self.search_text = ""
         self.pending_text = ""
         self._update_timeout = None
+        self.show_starred_only = False
         # Add regex patterns for CD notations
         self.cd_patterns = [
             r"\s+CD\d+",  # Matches: CD1, CD2, CD3, etc
@@ -58,7 +59,14 @@ class SearchFilter(Gtk.Filter):
         self._update_timeout = None
         return GLib.SOURCE_REMOVE
 
+    def set_show_starred_only(self, show_starred):
+        self.show_starred_only = show_starred
+        self.changed(Gtk.FilterChange.DIFFERENT)
+
     def do_match(self, item: Release) -> bool:
+        if self.show_starred_only and not item.starred:
+            return False
+
         if not self.search_text:
             return True
 
@@ -250,6 +258,13 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_child(self.albums_list)
         self.albums_page.append(scrolled)
 
+    def _on_star_filter_toggled(self, button):
+        if button.get_active():
+            button.set_icon_name("star-filled-symbolic")
+        else:
+            button.set_icon_name("star-outline-symbolic")
+        self.search_filter.set_show_starred_only(button.get_active())
+
     def _on_album_setup(self, factory, list_item):
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         box.set_hexpand(True)  # Make box expand horizontally
@@ -307,6 +322,13 @@ class MainWindow(Adw.ApplicationWindow):
         info_box.append(artist)
 
         box.append(info_box)
+
+        # Add star button
+        star_button = Gtk.Button(icon_name="star-outline-symbolic")
+        star_button.add_css_class("flat")
+        star_button.set_valign(Gtk.Align.CENTER)
+        box.append(star_button)
+
         list_item.set_child(box)
 
     def _on_album_bind(self, factory, list_item):
@@ -345,6 +367,21 @@ class MainWindow(Adw.ApplicationWindow):
             pill.add_css_class("caption")
             pill.add_css_class("dim-label")
             tags_box.append(pill)
+
+        # Update star button
+        star_button = box.get_last_child()
+        star_button.set_icon_name(
+            "star-filled-symbolic" if release.starred else "star-outline-symbolic"
+        )
+        star_button.connect("clicked", self._on_star_clicked, release)
+
+    def _on_star_clicked(self, button, release):
+        release.starred = not release.starred
+        button.set_icon_name(
+            "star-filled-symbolic" if release.starred else "star-outline-symbolic"
+        )
+        # Save changes to cache
+        self.get_application().save_to_cache()
 
     def _on_album_right_click(self, gesture, n_press, x, y):
         if n_press == 1:
