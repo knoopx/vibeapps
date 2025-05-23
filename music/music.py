@@ -135,6 +135,12 @@ class MainWindow(Adw.ApplicationWindow):
         self.header.set_title_widget(self.search)
         self.header.add_css_class("flat")
 
+        # Add star filter button
+        self.star_filter = Gtk.ToggleButton(icon_name="non-starred-symbolic")
+        self.star_filter.add_css_class("flat")
+        self.star_filter.connect("toggled", self._on_star_filter_toggled)
+        self.header.pack_end(self.star_filter)  # Changed from pack_start to pack_end
+
         # Add key controller for escape to focus search
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self._on_key_press)
