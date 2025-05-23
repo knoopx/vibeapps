@@ -7,8 +7,9 @@ from typing import Optional, List, Dict
 import re
 from typing import List, Set
 import threading
-import subprocess  # Add this import
+import subprocess
 from math import pi
+import concurrent.futures # Import ThreadPoolExecutor
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -198,46 +199,50 @@ class Track:
 
 class Scanner:
     def __init__(self):
-        self.releases: Dict[str, Release] = {}
+        # The scanner itself doesn't need to store all releases anymore
+        pass
 
-    def scan_directory(self, path: str, batch_size=50):
-        batch = []
-        for root, _, files in os.walk(path):
-            release_tracks = {}
+    # Modify scan_directory to process a single directory
+    def scan_single_directory(self, path: str) -> List[Release]:
+        """Scans a single directory for music files and returns a list of Releases found."""
+        release_tracks: Dict[str, List[Track]] = {}
+        releases_in_dir: List[Release] = []
 
-            # Group tracks by release first
-            for file in files:
-                if file.endswith(('.mp3', '.flac')):
+        # Find tracks in this specific directory
+        try:
+            for file in os.listdir(path):
+                full_path = os.path.join(path, file)
+                if os.path.isfile(full_path) and file.lower().endswith(('.mp3', '.flac')):
                     try:
-                        track = Track(os.path.join(root, file))
+                        track = Track(full_path)
                         if track.artist and track.album:
-                            # Use directory path as unique key
-                            key = os.path.dirname(track.path)
+                            # Use directory path as unique key for releases within this function
+                            key = os.path.dirname(track.path) # This will be 'path'
                             if key not in release_tracks:
                                 release_tracks[key] = []
                             release_tracks[key].append(track)
                     except Exception as e:
-                        print(f"Error scanning {file}: {e}")
+                        # Log error but continue scanning
+                        print(f"Error scanning track {full_path}: {e}")
+        except Exception as e:
+             # Log error for directory listing
+             print(f"Error listing directory {path}: {e}")
+             return [] # Return empty list if directory listing fails
 
-            # Create or update releases
-            for key, tracks in release_tracks.items():
-                if key not in self.releases:
-                    sample_track = tracks[0]
-                    release = Release(sample_track.album, sample_track.artist, sample_track.year)
-                    release.artwork_path = sample_track.artwork_path
-                    self.releases[key] = release
 
-                # Add all tracks to release
-                self.releases[key].tracks = sorted(tracks, key=lambda t: t.path)
+        # Create or update releases for this directory
+        for key, tracks in release_tracks.items():
+            # Assuming one release per directory for simplicity based on current Track parsing
+            if tracks:
+                sample_track = tracks[0]
+                release = Release(sample_track.album, sample_track.artist, sample_track.year)
+                release.artwork_path = sample_track.artwork_path
+                release.tracks = sorted(tracks, key=lambda t: t.path) # Add all tracks to release
+                releases_in_dir.append(release)
 
-                if len(batch) < batch_size:
-                    batch.append(self.releases[key])
-                else:
-                    yield sorted(batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-                    batch = []
+        return releases_in_dir
 
-        if batch:
-            yield sorted(batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+    # The main scan method will be handled by the MusicPlayer now using this single-directory scanner
 
 class SearchFilter(Gtk.Filter):
     def __init__(self):
@@ -300,13 +305,6 @@ class MainWindow(Adw.ApplicationWindow):
                 padding: 2px 8px;
                 margin: 2px;
                 font-size: 0.8em;
-            }
-
-            .artwork {
-                min-width: 48px;
-                min-height: 48px;
-                max-width: 48px;
-                max-height: 48px;
             }
 
             .rounded {
@@ -396,14 +394,6 @@ class MainWindow(Adw.ApplicationWindow):
         box.set_margin_bottom(6)
         box.set_valign(Gtk.Align.CENTER)
 
-        artwork = Gtk.Picture()
-        artwork.set_size_request(48, 48)
-        artwork.set_can_shrink(True)
-        artwork.set_content_fit(Gtk.ContentFit.COVER)
-        artwork.add_css_class("rounded")
-        artwork.add_css_class("artwork")
-        artwork.set_valign(Gtk.Align.CENTER)
-
         info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         info_box.set_valign(Gtk.Align.CENTER)
 
@@ -432,7 +422,6 @@ class MainWindow(Adw.ApplicationWindow):
         info_box.append(title_box)
         info_box.append(artist)
 
-        box.append(artwork)
         box.append(info_box)
         list_item.set_child(box)
 
@@ -440,8 +429,7 @@ class MainWindow(Adw.ApplicationWindow):
         box = list_item.get_child()
         release = list_item.get_item()
 
-        artwork = box.get_first_child()
-        info_box = artwork.get_next_sibling()
+        info_box = box.get_first_child()
         title_box = info_box.get_first_child()
 
         title_label = title_box.get_first_child()
@@ -449,11 +437,6 @@ class MainWindow(Adw.ApplicationWindow):
         tags_box = year_label.get_next_sibling()
 
         artist_label = title_box.get_next_sibling()
-
-        if release.artwork_path:
-            artwork.set_filename(release.artwork_path)
-        else:
-            artwork.set_filename(None)
 
         title_label.set_text(release.title)
         year_label.set_text(f"({release.year})" if release.year else "")
@@ -497,6 +480,9 @@ class MusicPlayer(Adw.Application):
     def __init__(self):
         super().__init__(application_id='org.knoopx.Music')
         self.scanner = Scanner()
+        self.all_releases: Dict[str, Release] = {} # Store all releases here, keyed by directory path
+        # Use a ThreadPoolExecutor for parallel scanning
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4)
 
     def do_activate(self):
         win = MainWindow(application=self)
@@ -506,34 +492,98 @@ class MusicPlayer(Adw.Application):
     def load_library(self):
         window = self.get_active_window()
         window.start_loading()
+        self.all_releases = {} # Clear previous scan results
+        window.albums_model.remove_all() # Clear the UI model using remove_all()
 
         def scan_thread():
             music_dir = "/mnt/music/"
-            total_releases = 0
-            current_releases = 0
+            directories_to_scan = []
+            total_directories = 0
+            processed_directories = 0
 
-            # First pass to count total releases
-            for root, _, files in os.walk(music_dir):
-                if any(f.endswith(('.mp3', '.flac')) for f in files):
-                    total_releases += 1
+            # First pass to find all directories containing music files
+            # This part is still single-threaded but fast
+            try:
+                for root, dirs, files in os.walk(music_dir):
+                    # Check if the directory itself contains music files
+                    if any(f.lower().endswith(('.mp3', '.flac')) for f in files):
+                        directories_to_scan.append(root)
+                        total_directories += 1
+                    # Optionally, check subdirectories too if releases can span folders,
+                    # but current Track parsing assumes release info is in the immediate parent dir name.
+                    # For now, stick to directories directly containing music.
 
-            for batch in self.scanner.scan_directory(music_dir):
-                current_releases += len(batch)
-                GLib.idle_add(self.on_batch_complete, batch, current_releases, total_releases)
+            except Exception as e:
+                 print(f"Error walking music directory {music_dir}: {e}")
+                 GLib.idle_add(self.on_scan_complete)
+                 return
+
+
+            if total_directories == 0:
+                 print("No music directories found.")
+                 GLib.idle_add(self.on_scan_complete)
+                 return
+
+            print(f"Found {total_directories} directories to scan.")
+            # Submit scanning tasks to the thread pool
+            futures = {self.executor.submit(self.scanner.scan_single_directory, dir_path): dir_path for dir_path in directories_to_scan}
+
+            batch_size = 50 # Still process in batches for UI updates
+            current_batch: List[Release] = []
+
+            # Process results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                processed_directories += 1
+                dir_path = futures[future]
+                try:
+                    releases_in_dir = future.result()
+                    for release in releases_in_dir:
+                         # Use directory path as key for the global collection
+                         key = os.path.dirname(release.tracks[0].path) if release.tracks else None
+                         if key and key not in self.all_releases:
+                             self.all_releases[key] = release
+                             current_batch.append(release)
+
+                             # Yield batch to UI thread when size is reached
+                             if len(current_batch) >= batch_size:
+                                 # Sort batch before yielding
+                                 sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                                 GLib.idle_add(self.on_batch_complete, sorted_batch)
+                                 current_batch = []
+
+                except Exception as exc:
+                    print(f'Scanning directory {dir_path} generated an exception: {exc}')
+
+                # Update progress after each directory is processed
+                GLib.idle_add(window.update_progress, processed_directories, total_directories)
+
+
+            # Process any remaining items in the last batch
+            if current_batch:
+                 sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                 GLib.idle_add(self.on_batch_complete, sorted_batch)
+
+            # Final progress update and completion signal
+            GLib.idle_add(window.update_progress, total_directories, total_directories) # Ensure 100%
             GLib.idle_add(self.on_scan_complete)
 
+        # Start the thread that manages the thread pool
         thread = threading.Thread(target=scan_thread, daemon=True)
         thread.start()
 
-    def on_batch_complete(self, batch, current, total):
+    # Modified on_batch_complete to just append the batch
+    def on_batch_complete(self, batch):
+        """Appends a batch of releases to the UI model."""
         window = self.get_active_window()
         window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
-        window.update_progress(current, total)
+        # Progress is updated separately now
         return False
 
     def on_scan_complete(self):
+        """Signals the end of the scanning process."""
         window = self.get_active_window()
         window.stop_loading()
+        print(f"Scan complete. Found {len(self.all_releases)} releases.")
         return False
 
 if __name__ == '__main__':

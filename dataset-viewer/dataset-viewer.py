@@ -5,11 +5,12 @@ import sys
 import gi
 import subprocess
 
+gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gdk, GdkPixbuf, Gio, GLib
+from gi.repository import Gtk, Gdk, GdkPixbuf, Gio, GLib, Adw
 
 
-class ImageCaptionViewer(Gtk.ApplicationWindow):
+class ImageCaptionViewer(Adw.ApplicationWindow):  # Use Adw.ApplicationWindow
     def __init__(self, app, dataset_dir, caption_ext):
         super().__init__(application=app, title="Image/Caption Dataset Viewer")
         self.dataset_dir = dataset_dir
@@ -19,24 +20,36 @@ class ImageCaptionViewer(Gtk.ApplicationWindow):
         self.original_pixbuf = None
 
         self.set_default_size(800, 600)
-        self.set_margin_start(10)
-        self.set_margin_end(10)
-        self.set_margin_top(10)
-        self.set_margin_bottom(10)
+        self.set_margin_start(0)   # Remove default window padding
+        self.set_margin_end(0)     # Remove default window padding
+        self.set_margin_top(0)     # Remove default window padding
+        self.set_margin_bottom(0)  # Remove default window padding
 
-        # Main layout
+        # Main layout using Adw.Clamp for centered content
+        # self.clamp = Adw.Clamp() # Remove clamp
         self.layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.set_child(self.layout)
+        self.layout.set_hexpand(True)  # Allow children to expand horizontally
+        self.layout.set_vexpand(True)  # Allow children to expand vertically
+        # self.clamp.set_child(self.layout) # Remove clamp child setting
+        # self.clamp.set_vexpand(True) # Remove clamp vexpand setting
+        self.set_content(self.layout) # Set layout directly as content
 
         # Image display area
         self.picture = Gtk.Picture()
         self.picture.set_can_shrink(True)
         self.picture.set_vexpand(True)
+        self.picture.set_hexpand(True)
         self.layout.append(self.picture)
 
         # Caption display area
         self.caption_label = Gtk.Label()
         self.caption_label.set_wrap(True)
+        self.caption_label.set_margin_start(10)  # Add margin to caption label
+        self.caption_label.set_margin_end(10)    # Add margin to caption label
+        self.caption_label.set_margin_top(10)    # Add margin to caption label
+        self.caption_label.set_margin_bottom(10) # Add margin to caption label
+        self.caption_label.set_hexpand(True)     # Make label take full width
+        self.caption_label.set_halign(Gtk.Align.CENTER)  # Align text within the label
         self.layout.append(self.caption_label)
 
         # Set up key event controller
@@ -53,7 +66,6 @@ class ImageCaptionViewer(Gtk.ApplicationWindow):
     def _get_image_files(self):
         """Retrieve all image files with a corresponding caption file in the dataset directory."""
         files = os.listdir(self.dataset_dir)
-        print(files)
         image_files = [
             f for f in files if f.lower().endswith((".png", ".jpg", ".jpeg"))
         ]
@@ -132,7 +144,7 @@ class ImageCaptionViewer(Gtk.ApplicationWindow):
             self.load_image_and_caption(self.current_index)
 
 
-class ImageViewerApp(Gtk.Application):
+class ImageViewerApp(Adw.Application):  # Use Adw.Application
     def __init__(self, dataset_dir, caption_ext):
         super().__init__(
             application_id="com.example.dataset-viewer",
