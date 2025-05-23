@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
-from typing import List, Dict
+from typing import Dict
 import concurrent.futures
 import gi
 import os
 import re
-import subprocess
 import threading
 import json
 import time
@@ -518,59 +517,86 @@ class MusicPlayer(Adw.Application):
         window.start_loading()
 
         def load_cache_thread():
-            current_batch = []
             batch_size = 100
+            current_batch = []
+            releases_loaded = 0
+
             try:
                 if os.path.exists(self.cache_file):
                     with open(self.cache_file, "r") as f:
-                        # Read header info from first line
-                        header = json.loads(f.readline())
+                        # Read header first
+                        header_line = f.readline()
+                        if not header_line:
+                            GLib.idle_add(self.load_library)
+                            return
+
+                        header = json.loads(header_line)
                         self.last_scan_time = header.get("timestamp", 0)
                         self.cached_dirs = header.get("cached_dirs", {})
 
-                        # Stream remaining lines as releases
-                        for i, line in enumerate(f):
+                        # Process remaining lines one at a time
+                        for line in f:
                             try:
                                 release_data = json.loads(line)
                                 release = Release.from_json(release_data)
-                                current_batch.append(release)
-                                key = os.path.dirname(release.tracks[0].path) if release.tracks else None
-                                if key:
+                                key = release.path
+
+                                if key and key not in self.all_releases:
                                     self.all_releases[key] = release
+                                    current_batch.append(release)
+                                    releases_loaded += 1
 
-                                # Send batch when it reaches the size limit
-                                if len(current_batch) >= batch_size:
-                                    sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-                                    GLib.idle_add(self.on_batch_complete, sorted_batch)
-                                    current_batch = []
+                                    # Update progress every 100 releases
+                                    if releases_loaded % 100 == 0:
+                                        GLib.idle_add(
+                                            window.update_progress,
+                                            releases_loaded,
+                                            releases_loaded + 100,
+                                        )
 
+                                    # Send batch when it reaches size limit
+                                    if len(current_batch) >= batch_size:
+                                        batch_to_send = sorted(
+                                            current_batch,
+                                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
+                                        )
+                                        GLib.idle_add(
+                                            self._apply_cached_batch, batch_to_send[:]
+                                        )
+                                        current_batch = []
+
+                            except json.JSONDecodeError as e:
+                                print(f"Error parsing cache line: {e}")
+                                continue
                             except Exception as e:
-                                print(f"Error loading release from cache: {e}")
+                                print(f"Error processing release: {e}")
                                 continue
 
-                        # Process final batch
-                        if current_batch:
-                            sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-                            GLib.idle_add(self.on_batch_complete, sorted_batch)
+                    # Send final batch if any remains
+                    if current_batch:
+                        batch_to_send = sorted(
+                            current_batch,
+                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
+                        )
+                        GLib.idle_add(self._apply_cached_batch, batch_to_send)
 
             except Exception as e:
                 print(f"Error loading cache: {e}")
-
-            # Start library scan after cache load attempt, regardless of success
-            GLib.idle_add(self.load_library)
+            finally:
+                # Always start library scan after cache load attempt
+                GLib.idle_add(self.load_library)
 
         thread = threading.Thread(target=load_cache_thread, daemon=True)
+        self._active_threads.append(thread)
         thread.start()
 
-    def _apply_cached_data(self, releases):
-        """Apply cached data to the UI (called on main thread)"""
+    def _apply_cached_batch(self, releases):
+        """Apply a batch of cached releases to the UI"""
         window = self.get_active_window()
         if window:
-            window.albums_model.splice(0, 0, releases)
-            # Switch to albums view as soon as we have releases
+            window.albums_model.splice(window.albums_model.get_n_items(), 0, releases)
             if releases:
                 window.stack.set_visible_child_name("albums")
-            window.stop_loading()
         return False
 
     def do_activate(self):
