@@ -154,7 +154,7 @@ class MainWindow(Adw.ApplicationWindow):
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
             width_request=48,  # Set explicit size
-            height_request=48  # Set explicit size
+            height_request=48,  # Set explicit size
         )
         loading_page.append(spinner)
 
@@ -381,13 +381,13 @@ class MainWindow(Adw.ApplicationWindow):
         if self.selected_release and self.selected_release.tracks:
             folder = os.path.dirname(self.selected_release.tracks[0].path)
             launcher = Gio.SubprocessLauncher.new(
-                Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP |
-                Gio.SubprocessFlags.STDERR_PIPE |
-                Gio.SubprocessFlags.STDOUT_PIPE
+                Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP
+                | Gio.SubprocessFlags.STDERR_PIPE
+                | Gio.SubprocessFlags.STDOUT_PIPE
             )
             # Launch process detached from our window
             try:
-                launcher.spawnv(['amberol', folder])
+                launcher.spawnv(["amberol", folder])
             except GLib.Error as e:
                 print(f"Failed to launch Amberol: {e.message}")
 
@@ -440,7 +440,7 @@ class MusicPlayer(Adw.Application):
         # Ensure directory exists
         os.makedirs(app_data_dir, exist_ok=True)
 
-        self.cache_file = os.path.join(app_data_dir, "releases.json")
+        self.cache_file = os.path.join(app_data_dir, "releases.jsonl")
         self.scanner = Scanner()
         self.all_releases: Dict[str, Release] = (
             {}
@@ -463,27 +463,24 @@ class MusicPlayer(Adw.Application):
         self._active_threads = []
 
     def load_cached_data(self):
-        """Load releases from cache if available"""
+        """Load releases from cache by streaming JSONL"""
         window = self.get_active_window()
         window.start_loading()
 
         def load_cache_thread():
             try:
                 if os.path.exists(self.cache_file):
+                    releases = []
                     with open(self.cache_file, "r") as f:
-                        # Load JSON in chunks for better memory usage
-                        data = json.load(f)
-                        self.last_scan_time = data.get("timestamp", 0)
-                        self.cached_dirs = data.get("cached_dirs", {})
-                        releases_data = data.get("releases", [])
+                        # Read header info from first line
+                        header = json.loads(f.readline())
+                        self.last_scan_time = header.get("timestamp", 0)
+                        self.cached_dirs = header.get("cached_dirs", {})
 
-                        total_releases = len(releases_data)
-                        releases = []
-
-                        # Process releases in batches
-                        BATCH_SIZE = 100
-                        for i, release_data in enumerate(releases_data):
+                        # Stream remaining lines as releases
+                        for i, line in enumerate(f):
                             try:
+                                release_data = json.loads(line)
                                 release = Release.from_json(release_data)
                                 releases.append(release)
                                 key = (
@@ -494,17 +491,18 @@ class MusicPlayer(Adw.Application):
                                 if key:
                                     self.all_releases[key] = release
 
-                                # Update progress every BATCH_SIZE items
-                                if (i + 1) % BATCH_SIZE == 0:
-                                    progress = (i + 1) / total_releases
-                                    GLib.idle_add(window.update_progress, i + 1, total_releases)
+                                # Update progress every 100 items
+                                if (i + 1) % 100 == 0:
+                                    GLib.idle_add(window.update_progress, i + 1, i + 2)
 
                             except Exception as e:
                                 print(f"Error loading release from cache: {e}")
                                 continue
 
-                        # Sort once at the end instead of maintaining order
-                        releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                        # Sort releases once at the end
+                        releases.sort(
+                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
+                        )
                         GLib.idle_add(self._apply_cached_data, releases)
                         return
 
@@ -520,11 +518,11 @@ class MusicPlayer(Adw.Application):
         """Apply cached data to the UI (called on main thread)"""
         window = self.get_active_window()
         if window:
-            # Add all releases at once instead of one by one
             window.albums_model.splice(0, 0, releases)
-            if window.has_releases():
+            # Switch to albums view as soon as we have releases
+            if releases:
                 window.stack.set_visible_child_name("albums")
-                window.stop_loading()
+            window.stop_loading()
 
         # Start fresh scan after loading cache
         self.load_library()
@@ -580,7 +578,9 @@ class MusicPlayer(Adw.Application):
                     GLib.idle_add(self.on_scan_complete)
                     return
 
-                print(f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories")
+                print(
+                    f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories"
+                )
 
                 # Process new/modified directories first
                 processed_directories = 0
@@ -592,7 +592,9 @@ class MusicPlayer(Adw.Application):
                     nonlocal processed_directories, current_batch
 
                     futures = {
-                        self.executor.submit(self.scanner.scan_single_directory, dir_path): dir_path
+                        self.executor.submit(
+                            self.scanner.scan_single_directory, dir_path
+                        ): dir_path
                         for dir_path in directories
                     }
 
@@ -608,7 +610,11 @@ class MusicPlayer(Adw.Application):
                         try:
                             releases_in_dir = future.result()
                             for release in releases_in_dir:
-                                key = os.path.dirname(release.tracks[0].path) if release.tracks else None
+                                key = (
+                                    os.path.dirname(release.tracks[0].path)
+                                    if release.tracks
+                                    else None
+                                )
                                 if key and (key not in self.all_releases):
                                     self.all_releases[key] = release
                                     current_batch.append(release)
@@ -619,13 +625,19 @@ class MusicPlayer(Adw.Application):
                                             current_batch,
                                             key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
                                         )
-                                        GLib.idle_add(self.on_batch_complete, sorted_batch)
+                                        GLib.idle_add(
+                                            self.on_batch_complete, sorted_batch
+                                        )
                                         current_batch = []
 
                         except Exception as exc:
                             print(f"Error scanning directory {dir_path}: {exc}")
 
-                        GLib.idle_add(window.update_progress, processed_directories, total_directories)
+                        GLib.idle_add(
+                            window.update_progress,
+                            processed_directories,
+                            total_directories,
+                        )
 
                 # Process new directories first
                 process_directories(new_dirs)
@@ -635,11 +647,14 @@ class MusicPlayer(Adw.Application):
                 # Process final batch
                 if current_batch:
                     sorted_batch = sorted(
-                        current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
+                        current_batch,
+                        key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
                     )
                     GLib.idle_add(self.on_batch_complete, sorted_batch)
 
-                GLib.idle_add(window.update_progress, total_directories, total_directories)
+                GLib.idle_add(
+                    window.update_progress, total_directories, total_directories
+                )
                 GLib.idle_add(self.on_scan_complete)
             finally:
                 GLib.idle_add(window.stop_loading)
@@ -653,11 +668,17 @@ class MusicPlayer(Adw.Application):
     # Modified on_batch_complete to just append the batch
     def on_batch_complete(self, batch):
         """Appends a batch of releases to the UI model."""
+
         def update_ui():
             window = self.get_active_window()
             if window:
                 with self.cache_lock:  # Protect UI updates
-                    window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
+                    window.albums_model.splice(
+                        window.albums_model.get_n_items(), 0, batch
+                    )
+                    # Switch to albums view as soon as we have any releases
+                    if batch:
+                        window.stack.set_visible_child_name("albums")
             return False
 
         # Schedule a debounced cache save
@@ -673,7 +694,7 @@ class MusicPlayer(Adw.Application):
         self._pending_save = True
 
     def _do_save_cache(self):
-        """Actually perform the save operation in a separate thread"""
+        """Save cache using JSONL format for better streaming"""
         if not self._pending_save:
             return False
 
@@ -684,21 +705,24 @@ class MusicPlayer(Adw.Application):
                     releases_to_save = list(self.all_releases.values())
                     cached_dirs_copy = dict(self.cached_dirs)
 
-                    data = {
-                        "timestamp": time.time(),
-                        "releases": [release.to_json() for release in releases_to_save],
-                        "cached_dirs": cached_dirs_copy
-                    }
-
                     # Write to a temporary file first
                     temp_file = f"{self.cache_file}.tmp"
                     with open(temp_file, "w") as f:
-                        json.dump(data, f)
+                        # Write header as first line
+                        header = {
+                            "timestamp": time.time(),
+                            "cached_dirs": cached_dirs_copy,
+                        }
+                        f.write(json.dumps(header) + "\n")
+
+                        # Write each release as a separate line
+                        for release in releases_to_save:
+                            f.write(json.dumps(release.to_json()) + "\n")
 
                     # Atomically replace the old file
                     os.replace(temp_file, self.cache_file)
-
                     self._pending_save = False
+
             except Exception as e:
                 print(f"Error saving cache: {e}")
 
