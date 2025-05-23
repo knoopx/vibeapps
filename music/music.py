@@ -518,9 +518,10 @@ class MusicPlayer(Adw.Application):
         window.start_loading()
 
         def load_cache_thread():
+            current_batch = []
+            batch_size = 100
             try:
                 if os.path.exists(self.cache_file):
-                    releases = []
                     with open(self.cache_file, "r") as f:
                         # Read header info from first line
                         header = json.loads(f.readline())
@@ -532,33 +533,30 @@ class MusicPlayer(Adw.Application):
                             try:
                                 release_data = json.loads(line)
                                 release = Release.from_json(release_data)
-                                releases.append(release)
-                                key = (
-                                    os.path.dirname(release.tracks[0].path)
-                                    if release.tracks
-                                    else None
-                                )
+                                current_batch.append(release)
+                                key = os.path.dirname(release.tracks[0].path) if release.tracks else None
                                 if key:
                                     self.all_releases[key] = release
 
-                                # Update progress every 100 items
-                                if (i + 1) % 100 == 0:
-                                    GLib.idle_add(window.update_progress, i + 1, i + 2)
+                                # Send batch when it reaches the size limit
+                                if len(current_batch) >= batch_size:
+                                    sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                                    GLib.idle_add(self.on_batch_complete, sorted_batch)
+                                    current_batch = []
 
                             except Exception as e:
                                 print(f"Error loading release from cache: {e}")
                                 continue
 
-                        # Sort releases once at the end
-                        releases.sort(
-                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
-                        )
-                        GLib.idle_add(self._apply_cached_data, releases)
-                        return
+                        # Process final batch
+                        if current_batch:
+                            sorted_batch = sorted(current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                            GLib.idle_add(self.on_batch_complete, sorted_batch)
 
             except Exception as e:
                 print(f"Error loading cache: {e}")
 
+            # Start library scan after cache load attempt, regardless of success
             GLib.idle_add(self.load_library)
 
         thread = threading.Thread(target=load_cache_thread, daemon=True)
@@ -573,9 +571,6 @@ class MusicPlayer(Adw.Application):
             if releases:
                 window.stack.set_visible_child_name("albums")
             window.stop_loading()
-
-        # Start fresh scan after loading cache
-        self.load_library()
         return False
 
     def do_activate(self):
@@ -583,7 +578,6 @@ class MusicPlayer(Adw.Application):
         if not self.window:
             self.window = MainWindow(application=self)
         self.window.present()
-        # Just start loading cache, which will trigger scan when done
         self.load_cached_data()
 
     def load_library(self):
