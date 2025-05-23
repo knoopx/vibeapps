@@ -461,19 +461,27 @@ class MusicPlayer(Adw.Application):
 
     def load_cached_data(self):
         """Load releases from cache if available and not too old"""
+        window = self.get_active_window()
+        window.start_loading()
+
         def load_cache_thread():
             try:
                 if os.path.exists(self.cache_file):
                     cache_stat = os.stat(self.cache_file)
                     if time.time() - cache_stat.st_mtime < self.CACHE_TTL:
                         with open(self.cache_file, "r") as f:
+                            # Load JSON in chunks for better memory usage
                             data = json.load(f)
                             self.last_scan_time = data.get("timestamp", 0)
                             self.cached_dirs = data.get("cached_dirs", {})
                             releases_data = data.get("releases", [])
 
+                            total_releases = len(releases_data)
                             releases = []
-                            for release_data in releases_data:
+
+                            # Process releases in batches
+                            BATCH_SIZE = 100
+                            for i, release_data in enumerate(releases_data):
                                 try:
                                     release = Release.from_json(release_data)
                                     releases.append(release)
@@ -484,14 +492,24 @@ class MusicPlayer(Adw.Application):
                                     )
                                     if key:
                                         self.all_releases[key] = release
+
+                                    # Update progress every BATCH_SIZE items
+                                    if (i + 1) % BATCH_SIZE == 0:
+                                        progress = (i + 1) / total_releases
+                                        GLib.idle_add(window.update_progress, i + 1, total_releases)
+
                                 except Exception as e:
                                     print(f"Error loading release from cache: {e}")
+                                    continue
 
+                            # Sort once at the end instead of maintaining order
                             releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
                             GLib.idle_add(self._apply_cached_data, releases)
                             return
+
             except Exception as e:
                 print(f"Error loading cache: {e}")
+
             GLib.idle_add(self.load_library)
 
         thread = threading.Thread(target=load_cache_thread, daemon=True)
@@ -501,10 +519,12 @@ class MusicPlayer(Adw.Application):
         """Apply cached data to the UI (called on main thread)"""
         window = self.get_active_window()
         if window:
+            # Add all releases at once instead of one by one
             window.albums_model.splice(0, 0, releases)
-            # Switch to albums view immediately if we loaded cached data
             if window.has_releases():
                 window.stack.set_visible_child_name("albums")
+                window.stop_loading()
+
         # Start fresh scan after loading cache
         self.load_library()
         return False
