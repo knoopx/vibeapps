@@ -455,7 +455,6 @@ class MusicPlayer(Adw.Application):
             "activate", self.on_reveal_in_file_explorer
         )
         self.last_scan_time = 0
-        self.CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
         self.cached_dirs = {}  # Store cached directory timestamps
         self.cache_lock = threading.Lock()  # Add lock for thread safety
         self._save_timer = None  # Add timer for debounced saving
@@ -464,52 +463,50 @@ class MusicPlayer(Adw.Application):
         self._active_threads = []
 
     def load_cached_data(self):
-        """Load releases from cache if available and not too old"""
+        """Load releases from cache if available"""
         window = self.get_active_window()
         window.start_loading()
 
         def load_cache_thread():
             try:
                 if os.path.exists(self.cache_file):
-                    cache_stat = os.stat(self.cache_file)
-                    if time.time() - cache_stat.st_mtime < self.CACHE_TTL:
-                        with open(self.cache_file, "r") as f:
-                            # Load JSON in chunks for better memory usage
-                            data = json.load(f)
-                            self.last_scan_time = data.get("timestamp", 0)
-                            self.cached_dirs = data.get("cached_dirs", {})
-                            releases_data = data.get("releases", [])
+                    with open(self.cache_file, "r") as f:
+                        # Load JSON in chunks for better memory usage
+                        data = json.load(f)
+                        self.last_scan_time = data.get("timestamp", 0)
+                        self.cached_dirs = data.get("cached_dirs", {})
+                        releases_data = data.get("releases", [])
 
-                            total_releases = len(releases_data)
-                            releases = []
+                        total_releases = len(releases_data)
+                        releases = []
 
-                            # Process releases in batches
-                            BATCH_SIZE = 100
-                            for i, release_data in enumerate(releases_data):
-                                try:
-                                    release = Release.from_json(release_data)
-                                    releases.append(release)
-                                    key = (
-                                        os.path.dirname(release.tracks[0].path)
-                                        if release.tracks
-                                        else None
-                                    )
-                                    if key:
-                                        self.all_releases[key] = release
+                        # Process releases in batches
+                        BATCH_SIZE = 100
+                        for i, release_data in enumerate(releases_data):
+                            try:
+                                release = Release.from_json(release_data)
+                                releases.append(release)
+                                key = (
+                                    os.path.dirname(release.tracks[0].path)
+                                    if release.tracks
+                                    else None
+                                )
+                                if key:
+                                    self.all_releases[key] = release
 
-                                    # Update progress every BATCH_SIZE items
-                                    if (i + 1) % BATCH_SIZE == 0:
-                                        progress = (i + 1) / total_releases
-                                        GLib.idle_add(window.update_progress, i + 1, total_releases)
+                                # Update progress every BATCH_SIZE items
+                                if (i + 1) % BATCH_SIZE == 0:
+                                    progress = (i + 1) / total_releases
+                                    GLib.idle_add(window.update_progress, i + 1, total_releases)
 
-                                except Exception as e:
-                                    print(f"Error loading release from cache: {e}")
-                                    continue
+                            except Exception as e:
+                                print(f"Error loading release from cache: {e}")
+                                continue
 
-                            # Sort once at the end instead of maintaining order
-                            releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-                            GLib.idle_add(self._apply_cached_data, releases)
-                            return
+                        # Sort once at the end instead of maintaining order
+                        releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                        GLib.idle_add(self._apply_cached_data, releases)
+                        return
 
             except Exception as e:
                 print(f"Error loading cache: {e}")
