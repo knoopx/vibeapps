@@ -380,8 +380,19 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_row_activated(self, list_view, position):
         if self.selected_release and self.selected_release.tracks:
             folder = os.path.dirname(self.selected_release.tracks[0].path)
-            launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP)
-            launcher.spawnv(['amberol', folder])
+            launcher = Gio.SubprocessLauncher.new(
+                Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP |
+                Gio.SubprocessFlags.STDERR_PIPE |
+                Gio.SubprocessFlags.STDOUT_PIPE
+            )
+            # Launch process detached from our window
+            try:
+                launcher.spawnv(['amberol', folder])
+            except GLib.Error as e:
+                print(f"Failed to launch Amberol: {e.message}")
+
+    def do_close_request(self):
+        return False  # Allow window to close
 
     def _on_search_changed(self, search):
         self.search_filter.set_search_text(search.get_text())
