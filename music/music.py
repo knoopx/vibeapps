@@ -101,6 +101,8 @@ class ReleaseName:
             return self._clean_string(self.raw_name)
 
         title_part = parts[1]
+        # Remove country code if present (e.g., -JP-)
+        title_part = re.sub(r'-([A-Z]{2})-', '-', title_part)
         # Remove year and label if present (YYYY or -YYYY- or --YYYY--)
         title_part = re.sub(r'[-]+\d{4}[-]+.*$', '', title_part)
         title_part = re.sub(r'\b\d{4}\b.*$', '', title_part)
@@ -158,7 +160,14 @@ class ReleaseName:
             'Single': r'\b(SINGLE|VLS|CDS)\b',
             'Compilation': r'^VA-'
         }
-        return {tag for tag, pattern in tag_patterns.items() if re.search(pattern, self.raw_name, re.I)}
+        tags = {tag for tag, pattern in tag_patterns.items() if re.search(pattern, self.raw_name, re.I)}
+
+        # Extract and add country code if present (e.g., -JP-)
+        country_match = re.search(r'-([A-Z]{2})-', self.raw_name)
+        if country_match:
+            tags.add(country_match.group(1))
+
+        return tags
 
 class TrackName:
     def __init__(self, name: str):
