@@ -392,7 +392,8 @@ class MainWindow(Adw.ApplicationWindow):
                 print(f"Failed to launch Amberol: {e.message}")
 
     def do_close_request(self):
-        return False  # Allow window to close
+        self.get_application().quit()
+        return True
 
     def _on_search_changed(self, search):
         self.search_filter.set_search_text(search.get_text())
@@ -429,6 +430,7 @@ class MainWindow(Adw.ApplicationWindow):
 class MusicPlayer(Adw.Application):
     def __init__(self):
         super().__init__(application_id="org.knoopx.music")
+        self.window = None  # Add window reference
         # Get XDG_DATA_HOME or fallback to ~/.local/share
         data_home = os.environ.get(
             "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
@@ -530,8 +532,10 @@ class MusicPlayer(Adw.Application):
         return False
 
     def do_activate(self):
-        win = MainWindow(application=self)
-        win.present()
+        # Only create one window
+        if not self.window:
+            self.window = MainWindow(application=self)
+        self.window.present()
         # Just start loading cache, which will trigger scan when done
         self.load_cached_data()
 
