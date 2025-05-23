@@ -143,9 +143,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.queue_page = Gtk.Box()
 
         # Add loading page
-        loading_page = Adw.StatusPage(
-            title="Loading...",
-            icon_name="folder-music-symbolic",
+        loading_page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
             css_classes=["loading-page", "compact"],
         )
         spinner = Gtk.Spinner(
@@ -153,7 +154,7 @@ class MainWindow(Adw.ApplicationWindow):
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER
         )
-        loading_page.set_child(spinner)
+        loading_page.append(spinner)
 
         # Add CSS for compact loading page
         css_provider.load_from_data(
