@@ -35,6 +35,8 @@ class SearchFilter(Gtk.Filter):
     def __init__(self):
         super().__init__()
         self.search_text = ""
+        self.pending_text = ""
+        self._update_timeout = None
         # Add regex patterns for CD notations
         self.cd_patterns = [
             r"\s+CD\d+",  # Matches: CD1, CD2, CD3, etc
@@ -43,8 +45,18 @@ class SearchFilter(Gtk.Filter):
         ]
 
     def set_search_text(self, search_text: str):
-        self.search_text = search_text.lower()
+        self.pending_text = search_text.lower()
+        # Cancel any pending update
+        if self._update_timeout:
+            GLib.source_remove(self._update_timeout)
+        # Schedule update in 150ms
+        self._update_timeout = GLib.timeout_add(150, self._do_update_filter)
+
+    def _do_update_filter(self):
+        self.search_text = self.pending_text
         self.changed(Gtk.FilterChange.DIFFERENT)
+        self._update_timeout = None
+        return GLib.SOURCE_REMOVE
 
     def do_match(self, item: Release) -> bool:
         if not self.search_text:
@@ -396,7 +408,8 @@ class MainWindow(Adw.ApplicationWindow):
         return True
 
     def _on_search_changed(self, search):
-        self.search_filter.set_search_text(search.get_text())
+        # Move to idle callback to avoid blocking UI
+        GLib.idle_add(self.search_filter.set_search_text, search.get_text())
 
     def _on_key_press(self, controller, keyval, keycode, state):
         # Check if the pressed key is the Escape key
