@@ -95,6 +95,14 @@ class MainWindow(Adw.ApplicationWindow):
             .loading-page {
                 margin: 48px;
             }
+
+            .loading-page.compact {
+                font-size: 0.9em;
+            }
+
+            .loading-page.compact picture {
+                -gtk-icon-size: 32px;
+            }
         """.encode()
         )
         Gtk.StyleContext.add_provider_for_display(
@@ -136,9 +144,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Add loading page
         loading_page = Adw.StatusPage(
-            title="Loading Music Library...",
+            title="Loading...",
             icon_name="folder-music-symbolic",
-            css_classes=["loading-page"],
+            css_classes=["loading-page", "compact"],
         )
         spinner = Gtk.Spinner(
             spinning=True,
@@ -146,6 +154,41 @@ class MainWindow(Adw.ApplicationWindow):
             valign=Gtk.Align.CENTER
         )
         loading_page.set_child(spinner)
+
+        # Add CSS for compact loading page
+        css_provider.load_from_data(
+            """
+            .tag-pill {
+                background-color: alpha(currentColor, 0.1);
+                border-radius: 4px;
+                padding: 2px 8px;
+                margin: 2px;
+                font-size: 0.8em;
+            }
+
+            .rounded {
+                border-radius: 6px;
+                overflow: hidden;
+            }
+
+            .title-box {
+                min-height: 24px;
+            }
+
+            .loading-page {
+                margin: 48px;
+            }
+
+            .loading-page.compact {
+                font-size: 0.9em;
+            }
+
+            .loading-page.compact picture {
+                -gtk-icon-size: 32px;
+            }
+        """.encode()
+        )
+
         self.stack.add_named(loading_page, "loading")
 
         self.stack.add_titled(self.albums_page, "albums", "Albums")
