@@ -259,9 +259,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_star_filter_toggled(self, button):
         if button.get_active():
-            button.set_icon_name("star-filled-symbolic")
+            button.set_icon_name("starred-symbolic")
         else:
-            button.set_icon_name("star-outline-symbolic")
+            button.set_icon_name("non-starred-symbolic")
         self.search_filter.set_show_starred_only(button.get_active())
 
     def _on_album_setup(self, factory, list_item):
@@ -323,7 +323,7 @@ class MainWindow(Adw.ApplicationWindow):
         box.append(info_box)
 
         # Add star button
-        star_button = Gtk.Button(icon_name="star-outline-symbolic")
+        star_button = Gtk.Button(icon_name="non-starred-symbolic")
         star_button.add_css_class("flat")
         star_button.set_valign(Gtk.Align.CENTER)
         box.append(star_button)
@@ -370,14 +370,14 @@ class MainWindow(Adw.ApplicationWindow):
         # Update star button
         star_button = box.get_last_child()
         star_button.set_icon_name(
-            "star-filled-symbolic" if release.starred else "star-outline-symbolic"
+            "starred-symbolic" if release.starred else "non-starred-symbolic"
         )
         star_button.connect("clicked", self._on_star_clicked, release)
 
     def _on_star_clicked(self, button, release):
         release.starred = not release.starred
         button.set_icon_name(
-            "star-filled-symbolic" if release.starred else "star-outline-symbolic"
+            "starred-symbolic" if release.starred else "non-starred-symbolic"
         )
         # Save changes to cache
         self.get_application().save_to_cache()
