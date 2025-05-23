@@ -152,7 +152,9 @@ class MainWindow(Adw.ApplicationWindow):
         spinner = Gtk.Spinner(
             spinning=True,
             halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER
+            valign=Gtk.Align.CENTER,
+            width_request=48,  # Set explicit size
+            height_request=48  # Set explicit size
         )
         loading_page.append(spinner)
 
@@ -182,6 +184,11 @@ class MainWindow(Adw.ApplicationWindow):
 
             .loading-page.compact {
                 font-size: 0.9em;
+            }
+
+            .loading-page.compact spinner {
+                min-width: 48px;
+                min-height: 48px;
             }
 
             .loading-page.compact picture {
