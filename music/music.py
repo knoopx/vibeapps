@@ -392,6 +392,10 @@ class MusicPlayer(Adw.Application):
         )
         self.last_scan_time = 0
         self.CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
+        self.cached_dirs = {}  # Store cached directory timestamps
+        self.cache_lock = threading.Lock()  # Add lock for thread safety
+        self._save_timer = None  # Add timer for debounced saving
+        self._pending_save = False
 
     def load_cached_data(self):
         """Load releases from cache if available and not too old"""
@@ -403,6 +407,7 @@ class MusicPlayer(Adw.Application):
                         with open(self.cache_file, "r") as f:
                             data = json.load(f)
                             self.last_scan_time = data.get("timestamp", 0)
+                            self.cached_dirs = data.get("cached_dirs", {})
                             releases_data = data.get("releases", [])
 
                             releases = []
@@ -410,7 +415,6 @@ class MusicPlayer(Adw.Application):
                                 try:
                                     release = Release.from_json(release_data)
                                     releases.append(release)
-                                    # Update global collection
                                     key = (
                                         os.path.dirname(release.tracks[0].path)
                                         if release.tracks
@@ -421,7 +425,6 @@ class MusicPlayer(Adw.Application):
                                 except Exception as e:
                                     print(f"Error loading release from cache: {e}")
 
-                            # Sort releases before sending to UI
                             releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
                             GLib.idle_add(self._apply_cached_data, releases)
                             return
@@ -453,102 +456,93 @@ class MusicPlayer(Adw.Application):
     def load_library(self):
         window = self.get_active_window()
         window.start_loading()
-        # Don't clear existing releases or model when starting scan
         if not self.all_releases:
             self.all_releases = {}
             window.albums_model.remove_all()
 
         def scan_thread():
             music_dir = MUSIC_DIR
-            directories_to_scan = []
-            total_directories = 0
-            processed_directories = 0
+            new_dirs = []
+            cached_dirs = []
 
-            # First pass to find all directories containing music files
-            # This part is still single-threaded but fast
+            # First pass to categorize directories
             try:
                 for root, dirs, files in os.walk(music_dir):
-                    # Check if the directory itself contains music files
                     if any(f.lower().endswith((".mp3", ".flac")) for f in files):
-                        directories_to_scan.append(root)
-                        total_directories += 1
-                    # Optionally, check subdirectories too if releases can span folders,
-                    # but current Track parsing assumes release info is in the immediate parent dir name.
-                    # For now, stick to directories directly containing music.
+                        dir_mtime = os.path.getmtime(root)
+                        cached_time = self.cached_dirs.get(root, 0)
 
+                        if root not in self.cached_dirs or dir_mtime > cached_time:
+                            new_dirs.append(root)
+                        else:
+                            cached_dirs.append(root)
             except Exception as e:
                 print(f"Error walking music directory {music_dir}: {e}")
                 GLib.idle_add(self.on_scan_complete)
                 return
 
+            total_directories = len(new_dirs) + len(cached_dirs)
             if total_directories == 0:
                 print("No music directories found.")
                 GLib.idle_add(self.on_scan_complete)
                 return
 
-            print(f"Found {total_directories} directories to scan.")
-            # Submit scanning tasks to the thread pool
-            futures = {
-                self.executor.submit(
-                    self.scanner.scan_single_directory, dir_path
-                ): dir_path
-                for dir_path in directories_to_scan
-            }
+            print(f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories")
 
-            batch_size = 50  # Still process in batches for UI updates
-            current_batch: List[Release] = []
+            # Process new/modified directories first
+            processed_directories = 0
+            batch_size = 50
+            current_batch = []
 
-            # Process results as they complete
-            for future in concurrent.futures.as_completed(futures):
-                processed_directories += 1
-                dir_path = futures[future]
-                try:
-                    releases_in_dir = future.result()
-                    for release in releases_in_dir:
-                        # Use directory path as key for the global collection
-                        key = (
-                            os.path.dirname(release.tracks[0].path)
-                            if release.tracks
-                            else None
-                        )
-                        if key and key not in self.all_releases:
-                            self.all_releases[key] = release
-                            current_batch.append(release)
+            # Function to process directories with progress updates
+            def process_directories(directories):
+                nonlocal processed_directories, current_batch
 
-                            # Yield batch to UI thread when size is reached
-                            if len(current_batch) >= batch_size:
-                                # Sort batch before yielding
-                                sorted_batch = sorted(
-                                    current_batch,
-                                    key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                                )
-                                GLib.idle_add(self.on_batch_complete, sorted_batch)
-                                current_batch = []
+                futures = {
+                    self.executor.submit(self.scanner.scan_single_directory, dir_path): dir_path
+                    for dir_path in directories
+                }
 
-                except Exception as exc:
-                    print(
-                        f"Scanning directory {dir_path} generated an exception: {exc}"
-                    )
+                for future in concurrent.futures.as_completed(futures):
+                    dir_path = futures[future]
+                    processed_directories += 1
+                    try:
+                        releases_in_dir = future.result()
+                        for release in releases_in_dir:
+                            key = os.path.dirname(release.tracks[0].path) if release.tracks else None
+                            if key and (key not in self.all_releases):
+                                self.all_releases[key] = release
+                                current_batch.append(release)
+                                self.cached_dirs[key] = os.path.getmtime(key)
 
-                # Update progress after each directory is processed
-                GLib.idle_add(
-                    window.update_progress, processed_directories, total_directories
-                )
+                                if len(current_batch) >= batch_size:
+                                    sorted_batch = sorted(
+                                        current_batch,
+                                        key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
+                                    )
+                                    GLib.idle_add(self.on_batch_complete, sorted_batch)
+                                    current_batch = []
 
-            # Process any remaining items in the last batch
+                    except Exception as exc:
+                        print(f"Error scanning directory {dir_path}: {exc}")
+
+                    GLib.idle_add(window.update_progress, processed_directories, total_directories)
+
+            # Process new directories first
+            process_directories(new_dirs)
+            # Then process cached directories
+            process_directories(cached_dirs)
+
+            # Process final batch
             if current_batch:
                 sorted_batch = sorted(
                     current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
                 )
                 GLib.idle_add(self.on_batch_complete, sorted_batch)
 
-            # Final progress update and completion signal
-            GLib.idle_add(
-                window.update_progress, total_directories, total_directories
-            )  # Ensure 100%
+            GLib.idle_add(window.update_progress, total_directories, total_directories)
             GLib.idle_add(self.on_scan_complete)
 
-        # Start the thread that manages the thread pool
         thread = threading.Thread(target=scan_thread, daemon=True)
         thread.start()
     # Modified on_batch_complete to just append the batch
@@ -557,28 +551,59 @@ class MusicPlayer(Adw.Application):
         def update_ui():
             window = self.get_active_window()
             if window:
-                window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
+                with self.cache_lock:  # Protect UI updates
+                    window.albums_model.splice(window.albums_model.get_n_items(), 0, batch)
             return False
 
-        # Save to cache after batch is processed
-        self.save_to_cache()
-        # Ensure UI updates happen on the main thread
+        # Schedule a debounced cache save
+        self.schedule_cache_save()
         GLib.idle_add(update_ui)
         return False
 
+    def schedule_cache_save(self):
+        """Schedule a debounced cache save operation"""
+        if self._save_timer:
+            GLib.source_remove(self._save_timer)
+        self._save_timer = GLib.timeout_add_seconds(5, self._do_save_cache)
+        self._pending_save = True
+
+    def _do_save_cache(self):
+        """Actually perform the save operation in a separate thread"""
+        if not self._pending_save:
+            return False
+
+        def save_thread():
+            try:
+                with self.cache_lock:
+                    # Create a static copy of the data we want to save
+                    releases_to_save = list(self.all_releases.values())
+                    cached_dirs_copy = dict(self.cached_dirs)
+
+                    data = {
+                        "timestamp": time.time(),
+                        "releases": [release.to_json() for release in releases_to_save],
+                        "cached_dirs": cached_dirs_copy
+                    }
+
+                    # Write to a temporary file first
+                    temp_file = f"{self.cache_file}.tmp"
+                    with open(temp_file, "w") as f:
+                        json.dump(data, f)
+
+                    # Atomically replace the old file
+                    os.replace(temp_file, self.cache_file)
+
+                    self._pending_save = False
+            except Exception as e:
+                print(f"Error saving cache: {e}")
+
+        thread = threading.Thread(target=save_thread, daemon=True)
+        thread.start()
+        return False
+
     def save_to_cache(self):
-        """Save current releases to cache file"""
-        try:
-            # Create a static copy of releases before serializing
-            releases_list = list(self.all_releases.values())
-            data = {
-                "timestamp": time.time(),
-                "releases": [release.to_json() for release in releases_list],
-            }
-            with open(self.cache_file, "w") as f:
-                json.dump(data, f)
-        except Exception as e:
-            print(f"Error saving cache: {e}")
+        """Schedule an immediate cache save"""
+        self.schedule_cache_save()
 
     def on_scan_complete(self):
         """Signals the end of the scanning process."""
