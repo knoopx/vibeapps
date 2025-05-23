@@ -4,6 +4,7 @@ from typing import List, Dict
 import concurrent.futures
 import gi
 import os
+import re
 import subprocess
 import threading
 import json
@@ -34,6 +35,12 @@ class SearchFilter(Gtk.Filter):
     def __init__(self):
         super().__init__()
         self.search_text = ""
+        # Add regex patterns for CD notations
+        self.cd_patterns = [
+            r"\s+CD\d+",  # Matches: CD1, CD2, CD3, etc
+            r"\s+\d+CD",  # Matches: 2CD, 3CD, etc
+            r"\s+CDS\d+",  # Matches: CDS1, CDS2, etc
+        ]
 
     def set_search_text(self, search_text: str):
         self.search_text = search_text.lower()
@@ -44,8 +51,14 @@ class SearchFilter(Gtk.Filter):
             return True
 
         terms = self.search_text.split()
-        # Include label in the searchable text
-        text = f"{item.title} {item.artist} {item.year if item.year else ''} {item.tags_string} {item.label_string}".lower()
+
+        # Clean up title by removing all CD notations
+        clean_title = item.title
+        for pattern in self.cd_patterns:
+            clean_title = re.sub(pattern, "", clean_title, flags=re.IGNORECASE)
+
+        # Include label in the searchable text with cleaned title
+        text = f"{clean_title} {item.artist} {item.year if item.year else ''} {item.tags_string} {item.label_string}".lower()
 
         return all(term in text for term in terms)
 
@@ -56,7 +69,7 @@ class SearchFilter(Gtk.Filter):
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.selected_release = None  # Add this line near the start of __init__
+        self.selected_release = None
 
         # Add CSS provider
         css_provider = Gtk.CssProvider()
@@ -77,6 +90,10 @@ class MainWindow(Adw.ApplicationWindow):
 
             .title-box {
                 min-height: 24px;
+            }
+
+            .loading-page {
+                margin: 48px;
             }
         """.encode()
         )
@@ -113,8 +130,23 @@ class MainWindow(Adw.ApplicationWindow):
         self.header_overlay.add_overlay(progress_box)
 
         self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.albums_page = Gtk.Box()
         self.queue_page = Gtk.Box()
+
+        # Add loading page
+        loading_page = Adw.StatusPage(
+            title="Loading Music Library...",
+            icon_name="folder-music-symbolic",
+            css_classes=["loading-page"],
+        )
+        spinner = Gtk.Spinner(
+            spinning=True,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER
+        )
+        loading_page.set_child(spinner)
+        self.stack.add_named(loading_page, "loading")
 
         self.stack.add_titled(self.albums_page, "albums", "Albums")
         self.stack.add_titled(self.queue_page, "queue", "Queue")
@@ -310,12 +342,23 @@ class MainWindow(Adw.ApplicationWindow):
             return True  # Indicate that the event was handled
         return False  # Let other handlers process the event
 
+    def has_releases(self):
+        return self.albums_model.get_n_items() > 0
+
     def start_loading(self):
         self.progress.set_visible(True)
         self.progress.set_fraction(0)
+        # Only show loading page if we have no releases
+        if not self.has_releases():
+            self.stack.set_visible_child_name("loading")
 
     def stop_loading(self):
         self.progress.set_visible(False)
+        if self.has_releases():
+            self.stack.set_visible_child_name("albums")
+        else:
+            # Show loading page if we still have no releases
+            self.stack.set_visible_child_name("loading")
 
     def update_progress(self, current: int, total: int):
         self.progress.set_fraction(current / total if total > 0 else 0)
@@ -394,6 +437,9 @@ class MusicPlayer(Adw.Application):
         window = self.get_active_window()
         if window:
             window.albums_model.splice(0, 0, releases)
+            # Switch to albums view immediately if we loaded cached data
+            if window.has_releases():
+                window.stack.set_visible_child_name("albums")
         # Start fresh scan after loading cache
         self.load_library()
         return False
