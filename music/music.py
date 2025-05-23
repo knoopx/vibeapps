@@ -460,6 +460,8 @@ class MusicPlayer(Adw.Application):
         self.cache_lock = threading.Lock()  # Add lock for thread safety
         self._save_timer = None  # Add timer for debounced saving
         self._pending_save = False
+        self._shutdown_event = threading.Event()
+        self._active_threads = []
 
     def load_cached_data(self):
         """Load releases from cache if available and not too old"""
@@ -547,89 +549,95 @@ class MusicPlayer(Adw.Application):
             window.albums_model.remove_all()
 
         def scan_thread():
-            music_dir = MUSIC_DIR
-            new_dirs = []
-            cached_dirs = []
-
-            # First pass to categorize directories
             try:
-                for root, dirs, files in os.walk(music_dir):
-                    if any(f.lower().endswith((".mp3", ".flac")) for f in files):
-                        dir_mtime = os.path.getmtime(root)
-                        cached_time = self.cached_dirs.get(root, 0)
+                music_dir = MUSIC_DIR
+                new_dirs = []
+                cached_dirs = []
 
-                        if root not in self.cached_dirs or dir_mtime > cached_time:
-                            new_dirs.append(root)
-                        else:
-                            cached_dirs.append(root)
-            except Exception as e:
-                print(f"Error walking music directory {music_dir}: {e}")
+                # First pass to categorize directories
+                try:
+                    for root, dirs, files in os.walk(music_dir):
+                        if any(f.lower().endswith((".mp3", ".flac")) for f in files):
+                            dir_mtime = os.path.getmtime(root)
+                            cached_time = self.cached_dirs.get(root, 0)
+
+                            if root not in self.cached_dirs or dir_mtime > cached_time:
+                                new_dirs.append(root)
+                            else:
+                                cached_dirs.append(root)
+                except Exception as e:
+                    print(f"Error walking music directory {music_dir}: {e}")
+                    GLib.idle_add(self.on_scan_complete)
+                    return
+
+                total_directories = len(new_dirs) + len(cached_dirs)
+                if total_directories == 0:
+                    print("No music directories found.")
+                    GLib.idle_add(self.on_scan_complete)
+                    return
+
+                print(f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories")
+
+                # Process new/modified directories first
+                processed_directories = 0
+                batch_size = 50
+                current_batch = []
+
+                # Function to process directories with progress updates
+                def process_directories(directories):
+                    nonlocal processed_directories, current_batch
+
+                    futures = {
+                        self.executor.submit(self.scanner.scan_single_directory, dir_path): dir_path
+                        for dir_path in directories
+                    }
+
+                    for future in concurrent.futures.as_completed(futures):
+                        dir_path = futures[future]
+                        processed_directories += 1
+                        try:
+                            releases_in_dir = future.result()
+                            for release in releases_in_dir:
+                                key = os.path.dirname(release.tracks[0].path) if release.tracks else None
+                                if key and (key not in self.all_releases):
+                                    self.all_releases[key] = release
+                                    current_batch.append(release)
+                                    self.cached_dirs[key] = os.path.getmtime(key)
+
+                                    if len(current_batch) >= batch_size:
+                                        sorted_batch = sorted(
+                                            current_batch,
+                                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
+                                        )
+                                        GLib.idle_add(self.on_batch_complete, sorted_batch)
+                                        current_batch = []
+
+                        except Exception as exc:
+                            print(f"Error scanning directory {dir_path}: {exc}")
+
+                        GLib.idle_add(window.update_progress, processed_directories, total_directories)
+
+                # Process new directories first
+                process_directories(new_dirs)
+                # Then process cached directories
+                process_directories(cached_dirs)
+
+                # Process final batch
+                if current_batch:
+                    sorted_batch = sorted(
+                        current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
+                    )
+                    GLib.idle_add(self.on_batch_complete, sorted_batch)
+
+                GLib.idle_add(window.update_progress, total_directories, total_directories)
                 GLib.idle_add(self.on_scan_complete)
-                return
-
-            total_directories = len(new_dirs) + len(cached_dirs)
-            if total_directories == 0:
-                print("No music directories found.")
-                GLib.idle_add(self.on_scan_complete)
-                return
-
-            print(f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories")
-
-            # Process new/modified directories first
-            processed_directories = 0
-            batch_size = 50
-            current_batch = []
-
-            # Function to process directories with progress updates
-            def process_directories(directories):
-                nonlocal processed_directories, current_batch
-
-                futures = {
-                    self.executor.submit(self.scanner.scan_single_directory, dir_path): dir_path
-                    for dir_path in directories
-                }
-
-                for future in concurrent.futures.as_completed(futures):
-                    dir_path = futures[future]
-                    processed_directories += 1
-                    try:
-                        releases_in_dir = future.result()
-                        for release in releases_in_dir:
-                            key = os.path.dirname(release.tracks[0].path) if release.tracks else None
-                            if key and (key not in self.all_releases):
-                                self.all_releases[key] = release
-                                current_batch.append(release)
-                                self.cached_dirs[key] = os.path.getmtime(key)
-
-                                if len(current_batch) >= batch_size:
-                                    sorted_batch = sorted(
-                                        current_batch,
-                                        key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                                    )
-                                    GLib.idle_add(self.on_batch_complete, sorted_batch)
-                                    current_batch = []
-
-                    except Exception as exc:
-                        print(f"Error scanning directory {dir_path}: {exc}")
-
-                    GLib.idle_add(window.update_progress, processed_directories, total_directories)
-
-            # Process new directories first
-            process_directories(new_dirs)
-            # Then process cached directories
-            process_directories(cached_dirs)
-
-            # Process final batch
-            if current_batch:
-                sorted_batch = sorted(
-                    current_batch, key=lambda r: f"{r.artist.lower()}{r.title.lower()}"
-                )
-                GLib.idle_add(self.on_batch_complete, sorted_batch)
-
-            GLib.idle_add(window.update_progress, total_directories, total_directories)
-            GLib.idle_add(self.on_scan_complete)
+            finally:
+                GLib.idle_add(window.stop_loading)
+                if thread in self._active_threads:
+                    self._active_threads.remove(thread)
 
         thread = threading.Thread(target=scan_thread, daemon=True)
+        self._active_threads.append(thread)
         thread.start()
     # Modified on_batch_complete to just append the batch
     def on_batch_complete(self, batch):
@@ -708,6 +716,19 @@ class MusicPlayer(Adw.Application):
                 Gtk.show_uri(window, f"file://{folder}", Gdk.CURRENT_TIME)
             except Exception as e:
                 print(f"Error opening directory {folder}: {e}")
+
+    def quit(self):
+        print("Shutting down threads...")
+        self._shutdown_event.set()
+        self.executor.shutdown(wait=True)
+
+        # Wait for active threads to finish
+        for thread in self._active_threads:
+            if thread.is_alive():
+                thread.join(timeout=1.0)
+
+        super().quit()
+
 
 if __name__ == "__main__":
     Gst.init(None)
