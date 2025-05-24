@@ -205,7 +205,7 @@ class MainWindow(Adw.ApplicationWindow):
             row = Gtk.ListBoxRow()
 
             label = Gtk.Label(label=note_obj.display_name)
-            label.set_ellipsize(Pango.EllipsizeMode.END)
+            label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
             label.set_max_width_chars(80)
             label.set_xalign(0)
             label.set_margin_start(5)
