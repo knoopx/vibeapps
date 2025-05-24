@@ -39,6 +39,7 @@ class NoteContentView(Gtk.Box):
 
         self.is_editing = False
         self._current_content = ""  # Store the current content being displayed/edited
+        self.processing_enter_edit_mode = False # Flag to manage focus during edit mode transition
 
         # Content Area - Stack to switch between edit and preview
         self.content_stack = Gtk.Stack()
@@ -188,6 +189,9 @@ class NoteContentView(Gtk.Box):
         """
         if not self.is_editing:
             self.is_editing = True
+            # Set flag to handle potential spurious focus "leave" event during transition
+            self.processing_enter_edit_mode = True
+
             # Load the current content into the editor buffer
             self.content_buffer.set_text(self._current_content)
             # Set cursor position at the start before switching view and focusing
@@ -195,6 +199,14 @@ class NoteContentView(Gtk.Box):
             self.content_buffer.place_cursor(start_iter)
             self.content_stack.set_visible_child_name("edit")
             self.source_view.grab_focus()
+
+            # Schedule the flag to be reset after current event processing cycle
+            GLib.idle_add(self._reset_processing_enter_edit_mode_flag)
+
+    def _reset_processing_enter_edit_mode_flag(self):
+        """Resets the flag used during the enter_edit_mode transition."""
+        self.processing_enter_edit_mode = False
+        return GLib.SOURCE_REMOVE # Ensure the idle source is removed
 
     def exit_edit_mode(self):
         """
@@ -236,7 +248,13 @@ class NoteContentView(Gtk.Box):
         Handler for when the source view loses focus.
         Used to automatically exit edit mode if focus leaves the editor.
         """
-        self.exit_edit_mode()
+        # If we are in the middle of programmatically trying to enter edit mode,
+        # a "leave" event might fire spuriously. Ignore it in this case.
+        if self.processing_enter_edit_mode:
+            return
+
+        if self.is_editing: # This check is important
+            self.exit_edit_mode()
 
     def on_webview_decide_policy(self, webview, decision, decision_type):
         """
