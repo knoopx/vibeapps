@@ -7,7 +7,7 @@
 
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "notes";
-    src = ./notes.py;
+    src = ./.;
     dontUnpack = true;
     pyproject = false;
 
@@ -30,7 +30,10 @@
     '';
 
     buildPhase = ''
-      install -m 755 -D $src $out/bin/notes
+      mkdir -p $out/{bin,share}
+      cp -r $src $out/share/notes
+      chmod +x $out/share/notes/notes.py
+      ln -s $out/share/notes/notes.py $out/bin/notes
     '';
 
     meta.mainProgram = "notes";
