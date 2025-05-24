@@ -77,7 +77,7 @@ bun run md2html/md2html.js
 Python:
 
 ```bash
-cd app && python -m unittest test_*.py
+cd app && python -m unittest test_file.py
 ```
 
 JavaScript:
