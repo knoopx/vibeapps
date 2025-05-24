@@ -8,6 +8,7 @@ import re
 import threading
 import json
 import time
+import orjson  # Add this import
 
 from circular_progress import CircularProgress
 from scanner import Scanner
@@ -563,30 +564,29 @@ class MusicPlayer(Adw.Application):
                     total_file_size = os.path.getsize(self.cache_file)
                     bytes_read = 0
 
-                    with open(self.cache_file, "r") as f:
+                    with open(self.cache_file, "rb") as f:  # Open in binary mode for orjson
                         # Read header first
                         header_line = f.readline()
                         if not header_line:
                             GLib.idle_add(self.on_cache_loaded)
                             return
 
-                        bytes_read += len(header_line.encode('utf-8'))
+                        bytes_read += len(header_line)
                         try:
-                            header = json.loads(header_line)
+                            header = orjson.loads(header_line)
                             self.last_scan_time = header.get("timestamp", 0)
                             self.cached_dirs = header.get("cached_dirs", {})
-                        except json.JSONDecodeError as e:
+                        except orjson.JSONDecodeError as e:
                             print(f"Error parsing cache header: {e}")
                             GLib.idle_add(self.on_cache_loaded) # Proceed to scan if header fails
                             return
 
-
                         # Process remaining lines one at a time
                         for line_number, line in enumerate(f, 1): # Start line_number from 1 for content lines
-                            line_bytes = len(line.encode('utf-8'))
+                            line_bytes = len(line)
                             bytes_read += line_bytes
                             try:
-                                release_data = json.loads(line)
+                                release_data = orjson.loads(line)
                                 release = Release.from_json(release_data)
                                 key = release.path
 
@@ -608,7 +608,7 @@ class MusicPlayer(Adw.Application):
                                         total_file_size,
                                     )
 
-                            except json.JSONDecodeError as e:
+                            except orjson.JSONDecodeError as e:
                                 print(f"Error parsing cache line {line_number + 1}: {e}") # +1 because header was line 0 effectively
                                 continue
                             except Exception as e:
@@ -831,17 +831,17 @@ class MusicPlayer(Adw.Application):
                     cached_dirs_copy = dict(self.cached_dirs)
 
                     # Write directly to the cache file
-                    with open(self.cache_file, "w") as f:
+                    with open(self.cache_file, "wb") as f:  # Write in binary mode for orjson
                         # Write header as first line
                         header = {
                             "timestamp": time.time(),
                             "cached_dirs": cached_dirs_copy,
                         }
-                        f.write(json.dumps(header) + "\n")
+                        f.write(orjson.dumps(header) + b"\n")
 
                         # Write each release as a separate line
                         for release in releases_to_save:
-                            f.write(json.dumps(release.to_json()) + "\n")
+                            f.write(orjson.dumps(release.to_json()) + b"\n")
 
                     self._pending_save = False
 

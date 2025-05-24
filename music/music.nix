@@ -26,6 +26,7 @@
     preFixup = ''
       gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
         p.pygobject3
+        p.orjson
       ])}/${pkgs.python3.sitePackages}")
     '';
 
