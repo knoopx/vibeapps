@@ -10,7 +10,7 @@
 To run an application, use:
 
 ```bash
-nix --offline run path:.#app_name
+nix --offline run path:.#app_name -- arg1 arg2
 ```
 
 ## Testing Python Applications
@@ -35,5 +35,14 @@ Test files contain the suffix `test.js` and are located in the same directory as
 
 When running shell commands in the VSCode terminal, keep in mind the following:
 
-The VSCode terminal is running Fish shell. You cannot run commands that span multiple lines.
+The VSCode terminal is running Fish shell. You cannot run commands that span multiple lines like:
+
+```bash
+python -c "
+# This is a multi-line command
+print('Hello, World!')
+"
+```
+
+
 Use **bun** instead of **node**.
