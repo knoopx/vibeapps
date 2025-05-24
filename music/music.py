@@ -372,6 +372,9 @@ class MainWindow(Adw.ApplicationWindow):
         box = list_item.get_child()
         release = list_item.get_item()
 
+        # Store the release object on the box widget so we can access it in right-click handler
+        box.release = release
+
         info_box = box.get_first_child()
         upper_box = info_box.get_first_child()
         title_year_box = upper_box.get_first_child()
@@ -428,13 +431,11 @@ class MainWindow(Adw.ApplicationWindow):
             if not box:
                 return
 
-            # Find the list item that contains this box
-            list_item = box.get_parent()
-            if not list_item:
+            # Get the release from the box widget (stored during bind)
+            if not hasattr(box, 'release'):
                 return
-
-            # Get the release directly from the list item
-            release_item = list_item.get_item()
+            
+            release_item = box.release
             if not release_item:
                 return
 
