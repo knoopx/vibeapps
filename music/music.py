@@ -553,9 +553,10 @@ class MusicPlayer(Adw.Application):
         window.start_loading()
 
         def load_cache_thread():
-            batch_size = 100
+            batch_size = 500  # Larger batch for fewer UI updates
             current_batch = []
             releases_loaded = 0
+            total_lines = 0
 
             try:
                 if os.path.exists(self.cache_file):
@@ -563,7 +564,7 @@ class MusicPlayer(Adw.Application):
                         # Read header first
                         header_line = f.readline()
                         if not header_line:
-                            GLib.idle_add(self.load_library)
+                            GLib.idle_add(self.on_cache_loaded)
                             return
 
                         header = json.loads(header_line)
@@ -572,6 +573,7 @@ class MusicPlayer(Adw.Application):
 
                         # Process remaining lines one at a time
                         for line in f:
+                            total_lines += 1
                             try:
                                 release_data = json.loads(line)
                                 release = Release.from_json(release_data)
@@ -582,24 +584,19 @@ class MusicPlayer(Adw.Application):
                                     current_batch.append(release)
                                     releases_loaded += 1
 
-                                    # Update progress every 100 releases
-                                    if releases_loaded % 100 == 0:
+                                    # Send batch when it reaches size limit
+                                    if len(current_batch) >= batch_size:
+                                        # No sort, just append for speed
+                                        GLib.idle_add(self._apply_cached_batch, current_batch[:])
+                                        current_batch = []
+
+                                    # Update progress every 200 releases
+                                    if releases_loaded % 200 == 0:
                                         GLib.idle_add(
                                             window.update_progress,
                                             releases_loaded,
-                                            releases_loaded + 100,
+                                            releases_loaded + 200,
                                         )
-
-                                    # Send batch when it reaches size limit
-                                    if len(current_batch) >= batch_size:
-                                        batch_to_send = sorted(
-                                            current_batch,
-                                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                                        )
-                                        GLib.idle_add(
-                                            self._apply_cached_batch, batch_to_send[:]
-                                        )
-                                        current_batch = []
 
                             except json.JSONDecodeError as e:
                                 print(f"Error parsing cache line: {e}")
@@ -610,28 +607,30 @@ class MusicPlayer(Adw.Application):
 
                     # Send final batch if any remains
                     if current_batch:
-                        batch_to_send = sorted(
-                            current_batch,
-                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                        )
-                        GLib.idle_add(self._apply_cached_batch, batch_to_send)
+                        GLib.idle_add(self._apply_cached_batch, current_batch)
 
             except Exception as e:
                 print(f"Error loading cache: {e}")
             finally:
                 # Always start library scan after cache load attempt
-                GLib.idle_add(self.load_library)
+                GLib.idle_add(self.on_cache_loaded)
 
         thread = threading.Thread(target=load_cache_thread, daemon=True)
         self._active_threads.append(thread)
         thread.start()
 
+    def on_cache_loaded(self):
+        """Callback after cache is loaded to start scanning."""
+        self.load_library()
+        return False
+
     def _apply_cached_batch(self, releases):
         """Apply a batch of cached releases to the UI"""
         window = self.get_active_window()
-        if window:
+        if window and releases:
             window.albums_model.splice(window.albums_model.get_n_items(), 0, releases)
-            if releases:
+            # Only set visible child if this is the first batch
+            if window.stack.get_visible_child_name() != "albums":
                 window.stack.set_visible_child_name("albums")
         return False
 
