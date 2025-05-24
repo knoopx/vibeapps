@@ -47,14 +47,15 @@ class ReleaseName(str):
         "EN": "GB",  # England -> Great Britain
     }
 
-    # Tag patterns for extraction
     TAG_PATTERNS = {
         "media_source": r"\b(?:vinyl|cd|web|dvda|dvd|tape|vls|sat|cable|digital)\b",
         "media_length": r"\b(?:\d+(?:cd|lp)|ep|lp|cdm|cds|mcd|\d+(?:inch))\b",
         "special_tags": r"\b(?:remix|bonus|demo|ost|ltd\.?|limited|promo|sampler|retail|bootleg|single)\b",
         "rip_tags": r"\b(?:proper|advance|rerip|flac|mp3|320|v0|v2|aac)\b",
-        "format_quality": r"\d+x?(?:lp|cd)",
-        "inch_measurements": r"\d+inch",
+    }
+
+    TAG_ALIASES = {
+        "Limited": ["LTD.", "LIMITED"],
     }
 
     def __new__(cls, content):
@@ -75,89 +76,50 @@ class ReleaseName(str):
             return
 
         self._parsed = True
-
-        # Check if it's a VA (Various Artists) release
         self._is_va = self.upper().startswith("VA-")
-
-        # Extract tags first to clean the string for parsing
         self._extract_tags()
 
-        # Get cleaned string without tags for parsing
-        cleaned = self._get_cleaned_string_for_parsing()
-
-        # Parse components
+        cleaned = self._get_cleaned_string()
         self._parse_year_and_group(cleaned)
         self._parse_artists_and_title(cleaned)
 
-    def _get_cleaned_string_for_parsing(self) -> str:
-        """Get a cleaned version of the string for parsing, removing tags but keeping structure"""
+    def _get_cleaned_string(self) -> str:
+        """Get a cleaned version of the string for parsing"""
         result = str(self)
 
-        # Remove all tag patterns but keep separators
         for pattern in self.TAG_PATTERNS.values():
             result = re.sub(pattern, "", result, flags=re.IGNORECASE)
 
-        # Clean up multiple separators
         result = re.sub(r"[-_]{2,}", "-", result)
-        result = re.sub(r"^[-_]+|[-_]+$", "", result)
-
-        return result
+        return re.sub(r"^[-_]+|[-_]+$", "", result)
 
     def _extract_tags(self):
         """Extract all tags from the release name"""
         self._tags = set()
 
-        # Extract media source tags
-        matches = re.finditer(self.TAG_PATTERNS["media_source"], self, re.IGNORECASE)
-        for match in matches:
-            tag = match.group().upper()
-            if tag != "MP3":  # Don't add MP3 as it's default
-                self._tags.add(tag)
-
-        # Extract media length tags
-        matches = re.finditer(self.TAG_PATTERNS["media_length"], self, re.IGNORECASE)
-        for match in matches:
-            self._tags.add(match.group().upper())
-
-        # Extract special tags
-        matches = re.finditer(self.TAG_PATTERNS["special_tags"], self, re.IGNORECASE)
-        for match in matches:
-            tag = match.group().upper().replace(".", "")
-            self._tags.add(tag)
-
-        # New section: Normalize tag aliases to single form (e.g., ltd. -> LIMITED)
-        ALIASES_MAPPINGS = {
-            "Limited": ["LTD.", "LIMITED"],
-            "Bonus": ["BONUS"],
-            "Demo": ["DEMO"],
-            "Remix": ["REMIX"],
-            "Bootleg": ["BOOTLEG"],
-        }
-
-        for tag_pattern, aliases in ALIASES_MAPPINGS.items():
-            pattern = r"\b(" + "|".join(re.escape(alias) for alias in aliases) + r")\b"
+        # Extract all tag types
+        for tag_type, pattern in self.TAG_PATTERNS.items():
             matches = re.finditer(pattern, self, re.IGNORECASE)
             for match in matches:
-                normalized_tag = tag_pattern
-                self._tags.add(normalized_tag)
+                tag = match.group().upper().replace(".", "")
+                if tag != "MP3":  # Don't add MP3 as it's default
+                    self._tags.add(tag)
 
-        # Extract ripping/quality tags
-        matches = re.finditer(self.TAG_PATTERNS["rip_tags"], self, re.IGNORECASE)
-        for match in matches:
-            self._tags.add(match.group().upper())
+        # Handle tag aliases
+        for normalized, aliases in self.TAG_ALIASES.items():
+            pattern = r"\b(" + "|".join(re.escape(alias) for alias in aliases) + r")\b"
+            if re.search(pattern, self, re.IGNORECASE):
+                self._tags.add(normalized)
 
-        # Extract country codes and normalize them
-        country_matches = re.finditer(r"-([A-Z]{2,3})-", self)
-        for match in country_matches:
+        # Extract and normalize country codes
+        for match in re.finditer(r"-([A-Z]{2,3})-", self):
             country = match.group(1)
-            normalized = self.COUNTRY_CODES.get(country, country)
-            self._tags.add(normalized)
+            self._tags.add(self.COUNTRY_CODES.get(country, country))
 
-        # Check for internal release
+        # Check for special indicators
         if re.search(r"_INT(?:[-_]|$)", self):
             self._tags.add("Internal")
 
-        # Check for internal split releases
         if re.search(r"\bSplit\b", self, re.IGNORECASE):
             self._tags.add("Split")
             self._is_split = True
@@ -170,128 +132,88 @@ class ReleaseName(str):
         year_match = re.search(r"\b(\d{3}[X\d])\b", cleaned_string)
         if year_match:
             year_str = year_match.group(1)
-            if year_str.endswith("X"):
-                # For uncertain years, we can't determine exact year
-                self._year = None
-            else:
+            if not year_str.endswith("X"):
                 try:
                     year = int(year_str)
                     if 1900 <= year <= 2100:
                         self._year = year
                 except ValueError:
-                    self._year = None
-        else:
-            self._year = None
+                    pass
 
         # Extract group (remove _INT suffix if present)
         group_match = re.search(r"-([A-Za-z0-9]+)(?:_INT)?$", self)
-        if group_match:
-            self._group = group_match.group(1)
-        else:
-            self._group = None
+        self._group = group_match.group(1) if group_match else None
 
     def _parse_artists_and_title(self, cleaned_string: str):
         """Parse artists and title from the cleaned string"""
-        if self._is_va:
-            # VA releases: remove "VA-" prefix
-            content = (
-                cleaned_string[3:]
-                if cleaned_string.upper().startswith("VA-")
-                else cleaned_string
-            )
-            self._artists = ["Various Artists"]
-        else:
-            content = cleaned_string
+        content = cleaned_string[3:] if self._is_va else cleaned_string
 
-        # Remove year and group from the end for parsing
+        if self._is_va:
+            self._artists = ["Various Artists"]
+
+        # Remove year and group from the end
         if self._year:
             content = re.sub(rf"-{self._year}-.*$", "", content)
         elif self._group:
             content = re.sub(rf"-{self._group}(?:_INT)?$", "", content)
 
-        # Split into artist and title
-        if (
-            self._is_split
-            or ("__" in content)
-            or any(sep in content for sep in [" and ", " & ", " vs ", " with "])
-        ):
-            # Handle multiple artists
+        # Handle multiple artists or single artist
+        if self._has_multiple_artists(content):
             self._parse_multiple_artists(content)
         else:
-            # Single artist
             parts = content.split("-", 1)
-            if len(parts) >= 2:
-                self._artists = [self._clean_artist_name(parts[0])]
-                self._title = self._clean_title(parts[1])
-            else:
-                self._artists = [self._clean_artist_name(parts[0])]
-                self._title = ""
+            self._artists = [self._clean_name(parts[0])] if not self._is_va else self._artists
+            self._title = self._clean_title(parts[1] if len(parts) > 1 else "")
+
+    def _has_multiple_artists(self, content: str) -> bool:
+        """Check if content contains multiple artists"""
+        return (self._is_split or "__" in content or
+                any(sep in content for sep in [" and ", " & ", " vs ", " with "]))
 
     def _parse_multiple_artists(self, content: str):
         """Parse multiple artists from content"""
-        # Split on various separators
         separators = ["__", "--", " and ", " & ", " vs ", " with ", "-"]
         parts = [content]
 
         for sep in separators:
             new_parts = []
             for part in parts:
-                if sep in part:
-                    split_parts = part.split(sep)
-                    new_parts.extend(split_parts)
-                else:
-                    new_parts.append(part)
+                new_parts.extend(part.split(sep) if sep in part else [part])
             parts = new_parts
 
         # Clean and filter parts
-        cleaned_parts = []
-        for part in parts:
-            cleaned = self._clean_artist_name(part)
-            if cleaned and not re.match(r"^(split|ep|single)$", cleaned, re.IGNORECASE):
-                cleaned_parts.append(cleaned)
+        cleaned_parts = [
+            self._clean_name(part) for part in parts
+            if part and not re.match(r"^(split|ep|single)$", part.strip(), re.IGNORECASE)
+        ]
 
         if cleaned_parts:
-            # First part is primary artist, rest form the title
-            self._artists = [cleaned_parts[0]]
-            if len(cleaned_parts) > 1:
-                self._title = " / ".join(cleaned_parts[1:])
-            else:
-                self._title = ""
-        else:
-            self._artists = []
-            self._title = ""
+            if not self._is_va:
+                self._artists = [cleaned_parts[0]]
+            self._title = " / ".join(cleaned_parts[1:]) if len(cleaned_parts) > 1 else ""
 
-    def _clean_artist_name(self, name: str) -> str:
-        """Clean artist name"""
+    def _clean_name(self, name: str) -> str:
+        """Clean artist/group name"""
         if not name:
             return ""
 
-        # Replace underscores with spaces and clean up
         cleaned = name.replace("_", " ")
         cleaned = re.sub(r"\s+", " ", cleaned)
-        cleaned = cleaned.strip(" -_")
-
-        return cleaned
+        return cleaned.strip(" -_")
 
     def _clean_title(self, title: str) -> str:
         """Clean title string"""
         if not title:
             return ""
 
-        # Replace underscores with spaces
         cleaned = title.replace("_", " ")
 
         # Handle self-titled albums
-        if re.match(
-            r"^(s[\-\_\s\.]*t[\-\_\s\.]|self[\-\_\s\.]*titled)$", cleaned, re.IGNORECASE
-        ):
+        if re.match(r"^(s[\-\_\s\.]*t[\-\_\s\.]|self[\-\_\s\.]*titled)$", cleaned, re.IGNORECASE):
             return "Self-Titled"
 
-        # Clean up whitespace
         cleaned = re.sub(r"\s+", " ", cleaned)
-        cleaned = cleaned.strip(" -_")
-
-        return cleaned
+        return cleaned.strip(" -_")
 
     @property
     def artists(self) -> List[str]:
