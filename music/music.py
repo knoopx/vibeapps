@@ -433,24 +433,13 @@ class MainWindow(Adw.ApplicationWindow):
             if not list_item:
                 return
 
-            # Get list item index based on parent/child relationship in ListView
-            release_item = None
-            idx = 0
-            curr = self.albums_list.get_first_child()
-            while curr:
-                if curr == list_item:
-                    release_item = self.filtered_model.get_item(idx)
-                    break
-                curr = curr.get_next_sibling()
-                idx += 1
-
+            # Get the release directly from the list item
+            release_item = list_item.get_item()
             if not release_item:
                 return
 
-            # Update current selection
+            # Update the selected release directly
             self.selected_release = release_item
-            # Use set_selected for SingleSelection model
-            self.albums_list.get_model().set_selected(idx)
 
             # Create the menu
             menu = Gio.Menu.new()
