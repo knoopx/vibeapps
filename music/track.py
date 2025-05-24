@@ -9,6 +9,16 @@ gi.require_version("Gst", "1.0")
 
 
 class TrackName:
+    """
+    A class to handle track names and their parsing.
+    Track names are typically formatted as:
+        * Track Number-Artist Name-Track Title
+        * Track Number-Artist Name-Track Title-Group
+
+    They follow similar conventions to ReleaseName but are specific to individual tracks.
+        * Use "_" to separate components.
+
+    """
     def __init__(self, name: str):
         self.raw_name = name
         self._parse()
