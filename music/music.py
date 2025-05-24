@@ -556,10 +556,13 @@ class MusicPlayer(Adw.Application):
             batch_size = 500  # Larger batch for fewer UI updates
             current_batch = []
             releases_loaded = 0
-            total_lines = 0
+            # total_lines = 0 # No longer used for primary progress logic
 
             try:
                 if os.path.exists(self.cache_file):
+                    total_file_size = os.path.getsize(self.cache_file)
+                    bytes_read = 0
+
                     with open(self.cache_file, "r") as f:
                         # Read header first
                         header_line = f.readline()
@@ -567,13 +570,21 @@ class MusicPlayer(Adw.Application):
                             GLib.idle_add(self.on_cache_loaded)
                             return
 
-                        header = json.loads(header_line)
-                        self.last_scan_time = header.get("timestamp", 0)
-                        self.cached_dirs = header.get("cached_dirs", {})
+                        bytes_read += len(header_line.encode('utf-8'))
+                        try:
+                            header = json.loads(header_line)
+                            self.last_scan_time = header.get("timestamp", 0)
+                            self.cached_dirs = header.get("cached_dirs", {})
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing cache header: {e}")
+                            GLib.idle_add(self.on_cache_loaded) # Proceed to scan if header fails
+                            return
+
 
                         # Process remaining lines one at a time
-                        for line in f:
-                            total_lines += 1
+                        for line_number, line in enumerate(f, 1): # Start line_number from 1 for content lines
+                            line_bytes = len(line.encode('utf-8'))
+                            bytes_read += line_bytes
                             try:
                                 release_data = json.loads(line)
                                 release = Release.from_json(release_data)
@@ -586,29 +597,34 @@ class MusicPlayer(Adw.Application):
 
                                     # Send batch when it reaches size limit
                                     if len(current_batch) >= batch_size:
-                                        # No sort, just append for speed
                                         GLib.idle_add(self._apply_cached_batch, current_batch[:])
                                         current_batch = []
 
-                                    # Update progress every 200 releases
-                                    if releases_loaded % 200 == 0:
-                                        GLib.idle_add(
-                                            window.update_progress,
-                                            releases_loaded,
-                                            releases_loaded + 200,
-                                        )
+                                # Update progress periodically
+                                if line_number % 200 == 0: # Update every 200 lines
+                                    GLib.idle_add(
+                                        window.update_progress,
+                                        bytes_read,
+                                        total_file_size,
+                                    )
 
                             except json.JSONDecodeError as e:
-                                print(f"Error parsing cache line: {e}")
+                                print(f"Error parsing cache line {line_number + 1}: {e}") # +1 because header was line 0 effectively
                                 continue
                             except Exception as e:
-                                print(f"Error processing release: {e}")
+                                print(f"Error processing release from cache line {line_number + 1}: {e}")
                                 continue
 
                     # Send final batch if any remains
                     if current_batch:
                         GLib.idle_add(self._apply_cached_batch, current_batch)
 
+                    # Ensure progress reaches 100% if file was processed
+                    if total_file_size > 0 : # Avoid division by zero if cache_file was just a header
+                        GLib.idle_add(window.update_progress, total_file_size, total_file_size)
+
+            except FileNotFoundError:
+                print(f"Cache file not found: {self.cache_file}")
             except Exception as e:
                 print(f"Error loading cache: {e}")
             finally:
