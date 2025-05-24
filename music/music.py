@@ -8,11 +8,12 @@ import re
 import threading
 import json
 import time
-import orjson  # Add this import
+
 
 from circular_progress import CircularProgress
 from scanner import Scanner
 from release import Release
+from database import MusicDatabase
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -416,8 +417,9 @@ class MainWindow(Adw.ApplicationWindow):
         button.set_icon_name(
             "starred-symbolic" if release.starred else "non-starred-symbolic"
         )
-        # Save changes to cache
-        self.get_application().save_to_cache()
+        # Update database directly for better performance
+        app = self.get_application()
+        app.db.update_release_starred(release.path, release.starred)
 
     def _on_album_right_click(self, gesture, n_press, x, y):
         if n_press == 1:
@@ -526,7 +528,8 @@ class MusicPlayer(Adw.Application):
         # Ensure directory exists
         os.makedirs(app_data_dir, exist_ok=True)
 
-        self.cache_file = os.path.join(app_data_dir, "releases.jsonl")
+        self.db_file = os.path.join(app_data_dir, "releases.db")
+        self.db = MusicDatabase(self.db_file)
         self.scanner = Scanner()
         self.all_releases: Dict[str, Release] = (
             {}
@@ -549,84 +552,45 @@ class MusicPlayer(Adw.Application):
         self._active_threads = []
 
     def load_cached_data(self):
-        """Load releases from cache by streaming JSONL"""
+        """Load releases from database"""
         window = self.get_active_window()
         window.start_loading()
 
         def load_cache_thread():
-            batch_size = 500  # Larger batch for fewer UI updates
-            current_batch = []
-            releases_loaded = 0
-            # total_lines = 0 # No longer used for primary progress logic
+            batch_size = 500
+            offset = 0
 
             try:
-                if os.path.exists(self.cache_file):
-                    total_file_size = os.path.getsize(self.cache_file)
-                    bytes_read = 0
+                # Load metadata
+                self.last_scan_time = self.db.get_last_scan_time()
+                self.cached_dirs = self.db.get_cached_dirs()
 
-                    with open(self.cache_file, "rb") as f:  # Open in binary mode for orjson
-                        # Read header first
-                        header_line = f.readline()
-                        if not header_line:
-                            GLib.idle_add(self.on_cache_loaded)
-                            return
+                # Load releases in batches
+                while True:
+                    releases_batch, has_more = self.db.load_releases_batch(batch_size, offset)
 
-                        bytes_read += len(header_line)
-                        try:
-                            header = orjson.loads(header_line)
-                            self.last_scan_time = header.get("timestamp", 0)
-                            self.cached_dirs = header.get("cached_dirs", {})
-                        except orjson.JSONDecodeError as e:
-                            print(f"Error parsing cache header: {e}")
-                            GLib.idle_add(self.on_cache_loaded) # Proceed to scan if header fails
-                            return
+                    if not releases_batch:
+                        break
 
-                        # Process remaining lines one at a time
-                        for line_number, line in enumerate(f, 1): # Start line_number from 1 for content lines
-                            line_bytes = len(line)
-                            bytes_read += line_bytes
-                            try:
-                                release_data = orjson.loads(line)
-                                release = Release.from_json(release_data)
-                                key = release.path
+                    # Add to internal cache
+                    for release in releases_batch:
+                        self.all_releases[release.path] = release
 
-                                if key and key not in self.all_releases:
-                                    self.all_releases[key] = release
-                                    current_batch.append(release)
-                                    releases_loaded += 1
+                    # Update UI
+                    GLib.idle_add(self._apply_cached_batch, releases_batch)
 
-                                    # Send batch when it reaches size limit
-                                    if len(current_batch) >= batch_size:
-                                        GLib.idle_add(self._apply_cached_batch, current_batch[:])
-                                        current_batch = []
+                    # Update progress
+                    total_count = self.db.get_release_count()
+                    current_count = offset + len(releases_batch)
+                    GLib.idle_add(window.update_progress, current_count, total_count)
 
-                                # Update progress periodically
-                                if line_number % 200 == 0: # Update every 200 lines
-                                    GLib.idle_add(
-                                        window.update_progress,
-                                        bytes_read,
-                                        total_file_size,
-                                    )
+                    if not has_more:
+                        break
 
-                            except orjson.JSONDecodeError as e:
-                                print(f"Error parsing cache line {line_number + 1}: {e}") # +1 because header was line 0 effectively
-                                continue
-                            except Exception as e:
-                                print(f"Error processing release from cache line {line_number + 1}: {e}")
-                                continue
+                    offset += batch_size
 
-                    # Send final batch if any remains
-                    if current_batch:
-                        GLib.idle_add(self._apply_cached_batch, current_batch)
-
-                    # Ensure progress reaches 100% if file was processed
-                    if total_file_size > 0 : # Avoid division by zero if cache_file was just a header
-                        GLib.idle_add(window.update_progress, total_file_size, total_file_size)
-
-            except FileNotFoundError:
-                print(f"Cache file not found: {self.cache_file}")
             except Exception as e:
-                print(f"Error loading cache: {e}")
+                print(f"Error loading from database: {e}")
             finally:
                 # Always start library scan after cache load attempt
                 GLib.idle_add(self.on_cache_loaded)
@@ -819,7 +783,7 @@ class MusicPlayer(Adw.Application):
         self._pending_save = True
 
     def _do_save_cache(self):
-        """Save cache using JSONL format for better streaming"""
+        """Save cache using SQLite database for better performance"""
         if not self._pending_save:
             return False
 
@@ -830,23 +794,18 @@ class MusicPlayer(Adw.Application):
                     releases_to_save = list(self.all_releases.values())
                     cached_dirs_copy = dict(self.cached_dirs)
 
-                    # Write directly to the cache file
-                    with open(self.cache_file, "wb") as f:  # Write in binary mode for orjson
-                        # Write header as first line
-                        header = {
-                            "timestamp": time.time(),
-                            "cached_dirs": cached_dirs_copy,
-                        }
-                        f.write(orjson.dumps(header) + b"\n")
+                    # Save to database in batches for better performance
+                    if releases_to_save:
+                        self.db.save_releases_batch(releases_to_save)
 
-                        # Write each release as a separate line
-                        for release in releases_to_save:
-                            f.write(orjson.dumps(release.to_json()) + b"\n")
+                    # Update metadata
+                    self.db.set_last_scan_time(time.time())
+                    self.db.set_cached_dirs(cached_dirs_copy)
 
                     self._pending_save = False
 
             except Exception as e:
-                print(f"Error saving cache: {e}")
+                print(f"Error saving to database: {e}")
 
         thread = threading.Thread(target=save_thread, daemon=True)
         thread.start()
