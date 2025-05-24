@@ -19,10 +19,13 @@ in
   pkgs.stdenvNoCC.mkDerivation {
     name = "md2html";
     dontUnpack = true;
-    src = ./md2html.js;
+    src = ./.;
     buildPhase = ''
-      install -D -m755 $src $out/bin/md2html
+      mkdir -p $out/{bin,share/md2html}
+      cp -r $src/* $out/share/md2html
+      cp -r ${deps} $out/share/md2html/node_modules
+      chmod +x $out/share/md2html/md2html.js
+      ln -s $out/share/md2html/md2html.js $out/bin/md2html
       substituteInPlace $out/bin/md2html --replace-fail "@@CSS@@" "${./md2html.css}"
-      cp -r ${deps} $out/bin/node_modules
     '';
   }
