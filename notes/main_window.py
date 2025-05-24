@@ -1,18 +1,18 @@
-from gi.repository import Adw, GLib, Gdk, Gio, Gtk, Pango
-
-from note_content_view import NoteContentView
-from note import Note
 import os
 from datetime import datetime
-
-NOTES_DIR = os.path.expanduser("~/Documents/Notes")
-EXT = ".md"
+from gi.repository import Gtk, Adw, Gio, Pango, Gdk, GLib
+from constants import EXT, NOTES_DIR # Keep NOTES_DIR for potential direct uses if any, or for context
+from note_content_view import NoteContentView
+from repository import Repository # Import the new Repository class
 
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Markdown Notes")
         self.set_default_size(800, 600)
+
+        # Initialize Repository
+        self.repository = Repository(notes_dir=NOTES_DIR, extension=EXT)
 
         # Setup AdwHeaderBar
         self.header = Adw.HeaderBar()
@@ -46,12 +46,12 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.header.set_title_widget(self.entry)
 
-        self.notes = []  # Will store Note objects
-        self.filtered_notes = []  # Will store Note objects
+        # self.notes = [] # Will store Note objects - Now managed by repository
+        self.filtered_notes = []  # Will store Note objects, result of filtering repository.notes
         self.current_note = None  # Will be a Note object or None
 
         self.setup_actions()  # Setup actions before loading notes that might use them
-        self.load_notes()
+        # self.load_notes() # Notes are loaded by repository constructor
 
         self.create_ui()
         self.setup_shortcuts()
@@ -174,19 +174,6 @@ class MainWindow(Adw.ApplicationWindow):
         # Actions are already set up in self.note_action_group and inserted with "app" prefix
         popover_menu.popup()
 
-    def find_notes_recursively(self, directory):
-        notes = []
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                if file.endswith(EXT):
-                    rel_path = os.path.relpath(os.path.join(root, file), NOTES_DIR)
-                    notes.append(Note(rel_path))  # Create Note objects
-        return notes
-
-    def load_notes(self):
-        os.makedirs(NOTES_DIR, exist_ok=True)
-        self.notes = self.find_notes_recursively(NOTES_DIR)
-
     def refresh_note_list(self):
         # Keep track of the currently selected note's relative path
         selected_note_relative_path = None
@@ -202,14 +189,15 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Filter and sort notes
         search_text = self.entry.get_text().lower()
+        all_notes = self.repository.get_all_notes() # Get notes from repository
         self.filtered_notes = [
             note
-            for note in self.notes
-            if search_text in note.relative_path.lower()  # Use note.relative_path
+            for note in all_notes # Iterate over notes from repository
+            if search_text in note.relative_path.lower()
         ]
         self.filtered_notes.sort(
             key=lambda note: note.display_name.split(os.sep)
-        )  # Use note.relative_path
+        )
 
         # Add filtered notes to the list box
         select_row_after_refresh = None
@@ -315,67 +303,96 @@ class MainWindow(Adw.ApplicationWindow):
         query = entry.get_text().strip()
         if not query:
             # If query is empty and a note is selected, open the selected note for editing
-            if self.current_note:  # Check if current_note exists
+            if self.current_note:
                 self.note_content_view.enter_edit_mode()
             return
 
-        # Add extension if not already present
-        if not query.lower().endswith(EXT):
-            filename_with_ext = query + EXT
-        else:
-            filename_with_ext = query
-            # query = os.path.splitext(query)[0] # query is used for title, keep it as is or derive from filename_with_ext
+        # Ensure the filename has the correct note extension
+        filename_with_ext = self.repository.ensure_note_extension(query)
 
-        # Ensure the filename is relative to NOTES_DIR, handling potential subdirectories
-        # If query already contains slashes, treat it as a path
+        # Determine the relative path. If query contains slashes, treat as path.
         if os.path.sep in filename_with_ext:
             relative_path = os.path.normpath(filename_with_ext)
-        else:  # Simple filename, place in root of NOTES_DIR
+        else: # Simple filename, place in root of NOTES_DIR by default
             relative_path = filename_with_ext
 
-        # Check if a note with this relative path already exists in self.notes
-        existing_note = next(
-            (n for n in self.notes if n.relative_path.lower() == relative_path.lower()),
-            None,
-        )
+        # Generate a unique path if creating a new note and the name exists
+        # For existing notes, we want to find it, not generate a unique one.
+
+        existing_note = self.repository.get_note_by_relative_path(relative_path)
 
         if existing_note:
             # Note exists, select it
-            for i, note_obj in enumerate(self.filtered_notes):
-                if note_obj == existing_note:
-                    row = self.note_list.get_row_at_index(i)
+            # Find in filtered_notes to get the correct index for UI selection
+            try:
+                idx = self.filtered_notes.index(existing_note)
+                row = self.note_list.get_row_at_index(idx)
+                if row:
+                    self.note_list.select_row(row)
+                    # on_note_selected will be called, which sets self.current_note
+                    # and loads content. Then enter edit mode.
+                    self.note_content_view.enter_edit_mode()
+            except ValueError:
+                # Should not happen if refresh_note_list is up-to-date
+                # Fallback: refresh and try to select
+                self.refresh_note_list()
+                try:
+                    idx = self.filtered_notes.index(existing_note)
+                    row = self.note_list.get_row_at_index(idx)
                     if row:
                         self.note_list.select_row(row)
-                        self.on_note_selected(
-                            self.note_list, row
-                        )  # This will set self.current_note
                         self.note_content_view.enter_edit_mode()
-                    break
+                except ValueError:
+                     print(f"Could not select existing note: {relative_path}")
+
         else:
-            # Note does not exist, create it
+            # Note does not exist, create it.
+            # The repository's create_note will handle actual file creation.
+            # Use generate_unique_relative_path from repository if there's a conflict,
+            # though get_note_by_relative_path should have caught exact matches.
+            # For now, assume `relative_path` is what the user wants, or Note.create handles uniqueness.
+            # Let's refine: if user types "foo" and "foo.md" exists, they mean "foo.md".
+            # If they type "foo" and "foo.md" does not exist, we create "foo.md".
+            # The `ensure_note_extension` and `get_note_by_relative_path` handle this.
+
             title_for_content = os.path.splitext(os.path.basename(relative_path))[0]
-            initial_content = f"# {title_for_content}\n\n"
-            new_note = Note.create(relative_path, initial_content)
+            initial_content = f"# {title_for_content}\\n\\n"
+
+            # The relative_path here is what the user typed (plus extension).
+            # If it truly needs to be unique beyond what get_note_by_relative_path checks,
+            # (e.g. case differences on case-insensitive FS), repo.create_note might fail.
+            # Or, we can use repo.generate_unique_relative_path if that's desired behavior.
+            # For now, let's assume `relative_path` is the target.
+
+            new_note = self.repository.create_note(relative_path, initial_content)
 
             if new_note:
-                self.notes.append(new_note)
-                # self.notes.sort(key=lambda n: n.relative_path) # Keep sorted if desired
-                self.current_note = new_note  # Set as current note
-                self.refresh_note_list()  # This will re-filter and re-select
+                # self.notes list is managed by repository.
+                self.current_note = new_note
+                self.refresh_note_list()  # This will re-filter, re-sort, and re-select
 
-                # Ensure the new note is selected and edit mode is entered
-                # refresh_note_list should handle selection, but we might need to force edit mode
-                # Find the row corresponding to the new_note and enter edit mode
-                for i, note_obj_in_list in enumerate(self.filtered_notes):
-                    if note_obj_in_list.relative_path == new_note.relative_path:
-                        row = self.note_list.get_row_at_index(i)
-                        if row:
-                            self.note_list.select_row(row)  # Ensure it's selected
-                            self.on_note_selected(self.note_list, row)  # Load it
-                            self.note_content_view.enter_edit_mode()
-                        break
+                # Ensure the new note is selected and edit mode is entered.
+                # refresh_note_list should handle selection.
+                # We need to find the row for the new_note to ensure edit mode is entered for it.
+                try:
+                    idx = self.filtered_notes.index(new_note)
+                    row = self.note_list.get_row_at_index(idx)
+                    if row:
+                        if not self.note_list.get_selected_row() == row:
+                             self.note_list.select_row(row) # Ensure it's selected
+                        # on_note_selected would have been called by select_row or refresh.
+                        self.note_content_view.enter_edit_mode()
+                except ValueError:
+                    # This might happen if refresh_note_list didn't immediately reflect the new note
+                    # or if selection logic needs adjustment.
+                    print(f"Could not auto-select and edit new note: {new_note.relative_path}")
+                    # As a fallback, ensure it's loaded if it became current_note
+                    if self.current_note == new_note:
+                        self.load_note_into_view()
+                        self.note_content_view.enter_edit_mode()
+
             else:
-                print(f"Error creating note {relative_path}")
+                print(f"Error creating note via repository: {relative_path}")
 
     def select_row_after_creation(
         self, row, note_filename_relative
@@ -495,46 +512,62 @@ class MainWindow(Adw.ApplicationWindow):
         dialog,
         response_id,
         entry,
-        # current_filename_relative, # Removed
-        # current_directory_relative, # Removed
     ):
         if response_id == Gtk.ResponseType.OK:
             new_name_base = entry.get_text().strip()
             dialog.destroy()
 
-            if not self.current_note:  # Should not happen if dialog was opened
+            if not self.current_note:
                 return
 
             if not new_name_base:
                 print("New name cannot be empty.")
                 return
 
-            # Construct new relative path, preserving original directory
             current_dir_rel = self.current_note.directory_relative
+            new_filename_with_ext = self.repository.ensure_note_extension(new_name_base)
+
             if current_dir_rel and current_dir_rel != ".":
-                new_relative_path = os.path.join(current_dir_rel, new_name_base + EXT)
+                new_relative_path = os.path.join(current_dir_rel, new_filename_with_ext)
             else:
-                new_relative_path = new_name_base + EXT
+                new_relative_path = new_filename_with_ext
 
             # Check if a note with the new name already exists (excluding the current note itself)
-            for note in self.notes:
-                if (
-                    note.relative_path.lower() == new_relative_path.lower()
-                    and note != self.current_note
-                ):
-                    print(
-                        f"Note with name '{new_name_base}' already exists in that location."
-                    )
-                    return
+            # The repository's rename_note method should also handle this.
+            existing_note = self.repository.get_note_by_relative_path(new_relative_path)
+            if existing_note and existing_note != self.current_note:
+                print(
+                    f"Note with name '{new_name_base}' already exists in that location."
+                )
+                # Consider showing a Gtk.MessageDialog here
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Rename Failed",
+                    secondary_text=f"A note named '{new_name_base}' already exists in '{current_dir_rel or 'root'}'.",
+                )
+                error_dialog.connect("response", lambda d, r: d.destroy())
+                error_dialog.present()
+                return
 
-            if self.current_note.rename(new_relative_path):
-                # The Note object's internal relative_path has been updated by the rename method.
-                self.notes.sort(key=lambda n: n.relative_path)
+            if self.repository.rename_note(self.current_note, new_relative_path):
+                # self.current_note object's relative_path is updated by rename_note->note.rename
+                # Repository's internal list is also updated and sorted.
                 self.refresh_note_list()  # This will find the renamed note and re-select
             else:
-                print(
-                    f"Error renaming note: {self.current_note.full_path} to {new_relative_path}"
+                # Error message would be printed by repository/note methods
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Rename Failed",
+                    secondary_text=f"Could not rename '{self.current_note.filename}' to '{new_filename_with_ext}'. Check logs.",
                 )
+                error_dialog.connect("response", lambda d, r: d.destroy())
+                error_dialog.present()
         else:
             dialog.destroy()
 
@@ -557,40 +590,46 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.show()
 
     def on_delete_confirmation_response(self, dialog, response):
-        dialog.close()
+        dialog.close() # Use close for Gtk.MessageDialog, or destroy
 
         if response != Gtk.ResponseType.OK:
             return
 
-        if not self.current_note:  # Check current_note
+        if not self.current_note:
             return
 
-        note_to_delete = self.current_note  # Keep a reference
+        note_to_delete = self.current_note
+        # current_note_full_path = note_to_delete.full_path # For logging if needed
 
-        if note_to_delete.delete():
-            try:
-                self.notes.remove(note_to_delete)  # Remove the Note object
-            except ValueError:
-                pass  # Should not happen if it was self.current_note
-
-            if (
-                self.current_note == note_to_delete
-            ):  # If the deleted note was the current one
+        if self.repository.delete_note(note_to_delete):
+            # Repository handles removing from its list and file deletion.
+            if self.current_note == note_to_delete: # If the deleted note was the current one
                 self.current_note = None
-                self.note_content_view.set_content("")
+                self.note_content_view.set_content("", is_editing=False) # Clear content
 
             self.refresh_note_list()  # Refresh list, will select next or clear
         else:
-            print(f"Error deleting note {note_to_delete.full_path}")
+            # Error message would be printed by repository/note methods
+            error_dialog = Gtk.MessageDialog(
+                transient_for=self,
+                modal=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text="Delete Failed",
+                secondary_text=f"Could not delete note '{note_to_delete.filename}'. Check logs.",
+            )
+            error_dialog.connect("response", lambda d, r: d.destroy())
+            error_dialog.present()
+            # print(f"Error deleting note {current_note_full_path} via repository")
 
     def load_note_into_view(self):
         """
         Loads the content of the current note into the NoteContentView widget.
         """
         content = ""
-        if self.current_note:  # Check current_note
-            content = self.current_note.load()  # Use current_note.load()
-            # Error handling is now inside Note.load()
+        if self.current_note:
+            content = self.repository.load_note_content(self.current_note)
+            # Error handling for load is within repository/note methods (prints to console)
 
         # Set the content in the NoteContentView widget (defaults to preview mode)
         self.note_content_view.set_content(content, is_editing=False)
@@ -598,14 +637,26 @@ class MainWindow(Adw.ApplicationWindow):
     def on_content_view_saved(self, note_content_view, content):
         """
         Handler for the 'content-saved' signal from NoteContentView.
-        Saves the content to the current note file.
+        Saves the content to the current note file using the repository.
         """
-        if self.current_note:  # Check current_note
-            if not self.current_note.save(content):  # Use current_note.save()
-                # Error is printed by Note.save()
-                # Optionally show an error dialog to the user here
-                pass
-            # print(f"Saved: {self.current_note.full_path}") # For debugging
+        if self.current_note:
+            if not self.repository.save_note_content(self.current_note, content):
+                # Error would be printed by repository/note methods
+                # Optionally show a dialog to the user
+                print(f"Failed to save content for {self.current_note.relative_path} via repository.")
+                # Simple dialog for feedback
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Save Failed",
+                    secondary_text=f"Could not save changes to '{self.current_note.filename}'. Check logs.",
+                )
+                error_dialog.connect("response", lambda d, r: d.destroy())
+                error_dialog.present()
+            # else:
+                # print(f"Saved: {self.current_note.full_path} via repository") # For debugging
         else:
             print("No current note to save.")
 
