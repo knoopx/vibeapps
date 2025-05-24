@@ -49,9 +49,9 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         self.text_view.set_monospace(True)
         self.text_view.get_buffer().connect("changed", self.on_text_changed)
 
-        input_scrolled_window = Gtk.ScrolledWindow()
-        input_scrolled_window.set_child(self.text_view)
-        input_scrolled_window.set_policy(
+        self.input_scrolled_window = Gtk.ScrolledWindow()
+        self.input_scrolled_window.set_child(self.text_view)
+        self.input_scrolled_window.set_policy(
             Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
         )
         # Add some margin to the input text view
@@ -60,7 +60,7 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         self.text_view.set_top_margin(5)
         self.text_view.set_bottom_margin(5)
 
-        paned.set_start_child(input_scrolled_window)
+        paned.set_start_child(self.input_scrolled_window)
 
         # --- Right Pane: Results Text View ---
         self.results_view = Gtk.TextView()
@@ -74,12 +74,12 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         self.results_view.set_top_margin(5)
         self.results_view.set_bottom_margin(5)
 
-        results_scrolled_window = Gtk.ScrolledWindow()
-        results_scrolled_window.set_child(self.results_view)
-        results_scrolled_window.set_policy(
+        self.results_scrolled_window = Gtk.ScrolledWindow()
+        self.results_scrolled_window.set_child(self.results_view)
+        self.results_scrolled_window.set_policy(
             Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
         )
-        paned.set_end_child(results_scrolled_window)
+        paned.set_end_child(self.results_scrolled_window)
 
         # Set equal panel sizes using GTK's layout system
         paned.set_resize_start_child(True)
@@ -93,6 +93,9 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         # Apply CSS for error styling that uses semantic colors
         self._setup_error_styling()
 
+        # Setup scroll synchronization
+        self._setup_scroll_sync()
+
         # Listen for theme changes to reapply styling
         settings = Gtk.Settings.get_default()
         settings.connect("notify::gtk-theme-name", self._on_theme_changed)
@@ -105,6 +108,33 @@ class ScratchpadWindow(Adw.ApplicationWindow):
 
         # Set error color - using Catppuccin Mocha red for consistency
         self.error_tag.set_property("foreground", "#f38ba8")
+
+    def _setup_scroll_sync(self):
+        """Setup scroll synchronization between input and results panels"""
+        # Flag to prevent infinite scroll loops
+        self._syncing_scroll = False
+
+        # Get the vertical adjustments for both scroll windows
+        self.input_vadj = self.input_scrolled_window.get_vadjustment()
+        self.results_vadj = self.results_scrolled_window.get_vadjustment()
+
+        # Connect scroll events
+        self.input_vadj.connect("value-changed", self._on_input_scroll)
+        self.results_vadj.connect("value-changed", self._on_results_scroll)
+
+    def _on_input_scroll(self, adjustment):
+        """Sync results panel scroll when input panel scrolls"""
+        if not self._syncing_scroll:
+            self._syncing_scroll = True
+            self.results_vadj.set_value(adjustment.get_value())
+            self._syncing_scroll = False
+
+    def _on_results_scroll(self, adjustment):
+        """Sync input panel scroll when results panel scrolls"""
+        if not self._syncing_scroll:
+            self._syncing_scroll = True
+            self.input_vadj.set_value(adjustment.get_value())
+            self._syncing_scroll = False
 
     def safe_eval(self, expression):
         """Safely evaluate mathematical expressions with enhanced functionality"""
@@ -161,19 +191,29 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
         lines = text.splitlines()
 
+        # Handle trailing newline: if text ends with newline, add empty line to match text view behavior
+        if text.endswith('\n'):
+            lines.append('')
+
+        # Ensure we always have at least one line to work with
+        if not lines:
+            lines = [""]
+
         # Clear the results buffer
         self.results_buffer.set_text("")
 
         # Reset variables for each full evaluation
         self.variables = {}
 
+        # Process each line and build results
+        results = []
         for i, line in enumerate(lines):
             try:
                 line_type, var_name, expression = self.parse_line(line)
 
                 if line_type is None:
                     # Empty line or comment
-                    self._append_result_line("")
+                    results.append("")
                     continue
 
                 if line_type == 'assignment':
@@ -184,11 +224,11 @@ class ScratchpadWindow(Adw.ApplicationWindow):
 
                         # Format result for display
                         if isinstance(result, float) and result.is_integer():
-                            self._append_result_line(f"{var_name} = {int(result)}")
+                            results.append(f"{var_name} = {int(result)}")
                         else:
-                            self._append_result_line(f"{var_name} = {result}")
+                            results.append(f"{var_name} = {result}")
                     except Exception as e:
-                        self._append_error_line(str(e))
+                        results.append(str(e))
 
                 elif line_type == 'expression':
                     # Mathematical expression
@@ -197,37 +237,77 @@ class ScratchpadWindow(Adw.ApplicationWindow):
 
                         # Format result to avoid unnecessary .0 for whole numbers
                         if isinstance(result, float) and result.is_integer():
-                            self._append_result_line(str(int(result)))
+                            results.append(str(int(result)))
                         else:
-                            self._append_result_line(str(result))
+                            results.append(str(result))
                     except ZeroDivisionError:
-                        self._append_error_line("Division by zero")
+                        results.append("Division by zero")
                     except NameError as e:
-                        self._append_error_line(f"Undefined variable - {str(e)}")
+                        results.append(f"Undefined variable - {str(e)}")
                     except SyntaxError:
-                        self._append_error_line("Invalid syntax")
+                        results.append("Invalid syntax")
                     except ValueError as e:
-                        self._append_error_line(f"Invalid value - {str(e)}")
+                        results.append(f"Invalid value - {str(e)}")
                     except Exception as e:
-                        self._append_error_line(str(e))
+                        results.append(str(e))
 
             except Exception as e:
-                self._append_error_line(str(e))
+                results.append(str(e))
 
-    def _append_result_line(self, text):
-        """Append a normal result line to the results buffer"""
+        # Set the results text all at once to ensure proper line count matching
+        self._set_results_text(lines, results)
+
+    def _set_results_text(self, input_lines, results):
+        """Set the results text ensuring line count matches input"""
+        # Ensure results list has exactly the same length as input lines
+        while len(results) < len(input_lines):
+            results.append("")
+
+        # Clear the results buffer
+        self.results_buffer.set_text("")
+
+        # Build the complete results text with proper formatting
+        for i, (input_line, result_text) in enumerate(zip(input_lines, results)):
+            if i > 0:
+                self._append_result_line_raw("\n")
+
+            # Check if this result should be shown as an error
+            line_type, _, _ = self.parse_line(input_line)
+            is_error = self._is_error_result(result_text, line_type)
+
+            if is_error:
+                self._append_error_line_raw(result_text)
+            else:
+                self._append_result_line_raw(result_text)
+
+    def _is_error_result(self, result_text, line_type):
+        """Determine if a result should be displayed as an error"""
+        if not result_text or line_type is None:
+            return False
+
+        # Check for common error patterns
+        error_patterns = [
+            "Division by zero",
+            "Undefined variable",
+            "Invalid syntax",
+            "Invalid value",
+            "NameError:",
+            "SyntaxError:",
+            "ValueError:",
+            "ZeroDivisionError:",
+            "TypeError:"
+        ]
+
+        return any(pattern in result_text for pattern in error_patterns)
+
+    def _append_result_line_raw(self, text):
+        """Append text to results buffer without adding newlines"""
         end_iter = self.results_buffer.get_end_iter()
-        if not self.results_buffer.get_char_count() == 0:
-            self.results_buffer.insert(end_iter, "\n")
-            end_iter = self.results_buffer.get_end_iter()
         self.results_buffer.insert(end_iter, text)
 
-    def _append_error_line(self, text):
-        """Append an error line in red to the results buffer"""
+    def _append_error_line_raw(self, text):
+        """Append error text to results buffer without adding newlines"""
         end_iter = self.results_buffer.get_end_iter()
-        if not self.results_buffer.get_char_count() == 0:
-            self.results_buffer.insert(end_iter, "\n")
-            end_iter = self.results_buffer.get_end_iter()
         self.results_buffer.insert_with_tags(end_iter, text, self.error_tag)
 
     def _on_theme_changed(self, settings, pspec):
