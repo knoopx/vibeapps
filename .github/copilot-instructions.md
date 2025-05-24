@@ -10,7 +10,7 @@
 To run an application, use:
 
 ```bash
-nix run path:.#app_name
+nix --offline run path:.#app_name
 ```
 
 ## Testing Applications
