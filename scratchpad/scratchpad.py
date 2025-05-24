@@ -326,7 +326,7 @@ class ScratchpadWindow(Adw.ApplicationWindow):
 class ScratchpadApplication(Adw.Application):
     def __init__(self):
         super().__init__(
-            application_id="com.example.ScratchpadCalculator",
+            application_id="net.knoopx.scratchpad",
             flags=Gio.ApplicationFlags.FLAGS_NONE,
         )
 
