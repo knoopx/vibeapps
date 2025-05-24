@@ -364,6 +364,8 @@ class MainWindow(Adw.ApplicationWindow):
         star_button.add_css_class("flat")
         star_button.add_css_class("ghost-star")
         star_button.set_valign(Gtk.Align.CENTER)
+        # Add a custom property to identify this as the star button
+        star_button.set_name("star-button")
         box.append(star_button)
 
         list_item.set_child(box)
@@ -408,12 +410,26 @@ class MainWindow(Adw.ApplicationWindow):
             pill.add_css_class("dim-label")
             tags_box.append(pill)
 
-        # Update star button
-        star_button = box.get_last_child()
-        star_button.set_icon_name(
-            "starred-symbolic" if release.starred else "non-starred-symbolic"
-        )
-        star_button.connect("clicked", self._on_star_clicked, release)
+        # Update star button - find it by name
+        star_button = None
+        child = box.get_first_child()
+        while child:
+            if isinstance(child, Gtk.Button) and child.get_name() == "star-button":
+                star_button = child
+                break
+            child = child.get_next_sibling()
+
+        if star_button:
+            star_button.set_icon_name(
+                "starred-symbolic" if release.starred else "non-starred-symbolic"
+            )
+            # Connect the handler with the release as user data
+            try:
+                # Disconnect any existing handlers first
+                star_button.disconnect_by_func(self._on_star_clicked)
+            except (TypeError, ValueError):
+                pass  # No existing handlers
+            star_button.connect("clicked", self._on_star_clicked, release)
 
     def _on_star_clicked(self, button, release):
         release.starred = not release.starred
@@ -434,7 +450,7 @@ class MainWindow(Adw.ApplicationWindow):
             # Get the release from the box widget (stored during bind)
             if not hasattr(box, 'release'):
                 return
-            
+
             release_item = box.release
             if not release_item:
                 return
