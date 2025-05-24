@@ -472,8 +472,8 @@ class MainWindow(Adw.ApplicationWindow):
         if not self.current_note:  # Check current_note
             return  # No note selected
 
-        current_name_without_ext = os.path.splitext(self.current_note.filename)[0]
-        # current_directory_relative = self.current_note.directory_relative # Unused
+        # Use display_name for the entry, which includes the relative path (without extension)
+        current_display_name_no_ext = os.path.splitext(self.current_note.display_name)[0]
 
         # Create a dialog to get the new name
         dialog = Gtk.Dialog(title="Rename Note", transient_for=self, modal=True)
@@ -489,12 +489,13 @@ class MainWindow(Adw.ApplicationWindow):
         box.set_margin_end(10)
         content_area.append(box)
 
-        label = Gtk.Label(label="Enter new name (without extension):")
+        label = Gtk.Label(label="Enter new path (e.g., folder/subfolder/new_name):")
         label.set_xalign(0)
         box.append(label)
 
         entry = Gtk.Entry()
-        entry.set_text(current_name_without_ext)
+        # Set the initial text to the current note's display_name (full relative path without extension)
+        entry.set_text(current_display_name_no_ext)
         entry.set_activates_default(True)  # Activate default button on Enter key
         box.append(entry)
 
@@ -514,57 +515,83 @@ class MainWindow(Adw.ApplicationWindow):
         entry,
     ):
         if response_id == Gtk.ResponseType.OK:
-            new_name_base = entry.get_text().strip()
+            new_relative_path_without_ext = entry.get_text().strip()
             dialog.destroy()
 
             if not self.current_note:
                 return
 
-            if not new_name_base:
-                print("New name cannot be empty.")
-                return
-
-            current_dir_rel = self.current_note.directory_relative
-            new_filename_with_ext = self.repository.ensure_note_extension(new_name_base)
-
-            if current_dir_rel and current_dir_rel != ".":
-                new_relative_path = os.path.join(current_dir_rel, new_filename_with_ext)
-            else:
-                new_relative_path = new_filename_with_ext
-
-            # Check if a note with the new name already exists (excluding the current note itself)
-            # The repository's rename_note method should also handle this.
-            existing_note = self.repository.get_note_by_relative_path(new_relative_path)
-            if existing_note and existing_note != self.current_note:
-                print(
-                    f"Note with name '{new_name_base}' already exists in that location."
-                )
-                # Consider showing a Gtk.MessageDialog here
+            if not new_relative_path_without_ext:
+                print("New path cannot be empty.")
                 error_dialog = Gtk.MessageDialog(
                     transient_for=self,
                     modal=True,
                     message_type=Gtk.MessageType.ERROR,
                     buttons=Gtk.ButtonsType.OK,
                     text="Rename Failed",
-                    secondary_text=f"A note named '{new_name_base}' already exists in '{current_dir_rel or 'root'}'.",
+                    secondary_text="The new path cannot be empty.",
                 )
                 error_dialog.connect("response", lambda d, r: d.destroy())
                 error_dialog.present()
                 return
 
-            if self.repository.rename_note(self.current_note, new_relative_path):
-                # self.current_note object's relative_path is updated by rename_note->note.rename
-                # Repository's internal list is also updated and sorted.
-                self.refresh_note_list()  # This will find the renamed note and re-select
-            else:
-                # Error message would be printed by repository/note methods
+            # Ensure the new path has the correct extension
+            new_relative_path_with_ext = self.repository.ensure_note_extension(
+                new_relative_path_without_ext
+            )
+
+            # Normalize the path (e.g., remove trailing slashes, handle ..)
+            new_relative_path_with_ext = os.path.normpath(new_relative_path_with_ext)
+
+            # Prevent renaming to an empty filename or just a directory
+            if not os.path.basename(new_relative_path_with_ext) or os.path.basename(new_relative_path_with_ext) == self.repository.extension:
+                 print("Invalid new path: filename cannot be empty.")
+                 error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Rename Failed",
+                    secondary_text="Invalid new path: the filename part cannot be empty or just the extension.",
+                )
+                 error_dialog.connect("response", lambda d, r: d.destroy())
+                 error_dialog.present()
+                 return
+
+            # Check if a note with the new name already exists (excluding the current note itself)
+            existing_note = self.repository.get_note_by_relative_path(
+                new_relative_path_with_ext
+            )
+            # Compare Note objects directly, or their unique identifiers if available and reliable.
+            # self.current_note is the note being renamed.
+            if existing_note and existing_note.relative_path.lower() != self.current_note.relative_path.lower():
+                print(
+                    f"Note with path '{new_relative_path_with_ext}' already exists."
+                )
                 error_dialog = Gtk.MessageDialog(
                     transient_for=self,
                     modal=True,
                     message_type=Gtk.MessageType.ERROR,
                     buttons=Gtk.ButtonsType.OK,
                     text="Rename Failed",
-                    secondary_text=f"Could not rename '{self.current_note.filename}' to '{new_filename_with_ext}'. Check logs.",
+                    secondary_text=f"A note with the path '{new_relative_path_with_ext}' already exists.",
+                )
+                error_dialog.connect("response", lambda d, r: d.destroy())
+                error_dialog.present()
+                return
+
+            if self.repository.rename_note(
+                self.current_note, new_relative_path_with_ext
+            ):
+                self.refresh_note_list()
+            else:
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Rename Failed",
+                    secondary_text=f"Could not rename the note to '{new_relative_path_with_ext}'. Check logs for details or if the name is valid.",
                 )
                 error_dialog.connect("response", lambda d, r: d.destroy())
                 error_dialog.present()
