@@ -44,7 +44,7 @@ A simple interface to query and browser nix packages.
 
 An interactive scratchpad calculator, similar to Soulver. (Work in Progress)
 
-<!-- Add screenshot once available -->
+![Scratchpad](scratchpad/screenshot.png)
 
 ### WebKit Shell
 
