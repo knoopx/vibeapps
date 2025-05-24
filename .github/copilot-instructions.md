@@ -1,4 +1,20 @@
-# Instructions for LLM Code Generation
+# Instructions for LLM Agents
+
+## Special Considerations when running shell commands in VSCode terminal
+
+When running shell commands in the VSCode terminal, keep in mind the following:
+
+The VSCode terminal is running Fish shell. You cannot run commands that span multiple lines like:
+
+```bash
+python -c "
+# This is a multi-line command
+print('Hello, World!')
+"
+```
+
+either use a single line command, run an interactive python repl or create a temporary script file to execute multi-line commands.
+
 
 ## System Overview
 
@@ -139,16 +155,3 @@ The system includes several external tools that applications integrate with:
 - **GTK**: Full GTK 2/3/4 support with flatpak and nix integration paths
 - **Accessibility**: `GTK_A11Y=none`
 - **File Systems**: 2.8TB NVMe storage (90% used), 32GB RAM, 63GB swap
-
-## Special Considerations when running shell commands in VSCode terminal
-
-When running shell commands in the VSCode terminal, keep in mind the following:
-
-The VSCode terminal is running Fish shell. You cannot run commands that span multiple lines like:
-
-```bash
-python -c "
-# This is a multi-line command
-print('Hello, World!')
-"
-```
