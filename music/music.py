@@ -661,18 +661,22 @@ class MusicPlayer(Adw.Application):
 
                 # First pass to categorize directories
                 try:
-                    for root, dirs, files in os.walk(music_dir):
+                    for root, dirs, files in os.walk(music_dir, followlinks=True):
                         # Check shutdown flag during walk
                         if self._shutdown_event.is_set():
                             return
-                        if any(f.lower().endswith((".mp3", ".flac")) for f in files):
-                            dir_mtime = os.path.getmtime(root)
-                            cached_time = self.cached_dirs.get(root, 0)
 
-                            if root not in self.cached_dirs or dir_mtime > cached_time:
-                                new_dirs.append(root)
+                        # Resolve real path if it's a symlink
+                        real_root = os.path.realpath(root)
+
+                        if any(f.lower().endswith((".mp3", ".flac")) for f in files):
+                            dir_mtime = os.path.getmtime(real_root)
+                            cached_time = self.cached_dirs.get(real_root, 0)
+
+                            if real_root not in self.cached_dirs or dir_mtime > cached_time:
+                                new_dirs.append(real_root)
                             else:
-                                cached_dirs.append(root)
+                                cached_dirs.append(real_root)
                 except Exception as e:
                     print(f"Error walking music directory {music_dir}: {e}")
                     GLib.idle_add(self.on_scan_complete)
