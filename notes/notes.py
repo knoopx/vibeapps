@@ -13,11 +13,16 @@ from main_window import MainWindow
 
 class NotesApplication(Adw.Application):
     def __init__(self):
-        Adw.Application.__init__(self, application_id="net.knoopx.notes")
+        super().__init__(application_id="net.knoopx.notes")
+        self.win = None  # Initialize window reference
         self.connect("activate", self.on_activate)
 
-    def on_activate(self, app):
-        self.win = MainWindow(app)
+    def on_activate(self, app):  # app is the application instance (self)
+        # Create the window only if it doesn't exist
+        if not self.win:
+            self.win = MainWindow(app)  # Or MainWindow(application=self) if preferred
+
+        # Present the window (shows it and/or brings it to front)
         self.win.present()
 
 
