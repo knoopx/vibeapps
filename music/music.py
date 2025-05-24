@@ -27,7 +27,7 @@ from gi.repository import (
     Pango,  # Add this import
 )
 
-MUSIC_DIR = "/mnt/music/"
+MUSIC_DIR = os.path.expanduser("~/Music")
 
 
 class SearchFilter(Gtk.Filter):
