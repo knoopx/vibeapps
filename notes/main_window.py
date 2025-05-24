@@ -1,9 +1,8 @@
 from gi.repository import Adw, GLib, Gdk, Gio, Gtk, Pango
 
-
 from note_content_view import NoteContentView
+from note import Note
 import os
-import shutil
 from datetime import datetime
 
 NOTES_DIR = os.path.expanduser("~/Documents/Notes")
@@ -33,7 +32,9 @@ class MainWindow(Adw.ApplicationWindow):
         )  # Higher priority than LOCAL
         context_menu_shortcut = Gtk.Shortcut.new(
             Gtk.ShortcutTrigger.parse_string("<Control>o"),
-            Gtk.CallbackAction.new(self.show_note_context_menu, None),
+            Gtk.CallbackAction.new(
+                self._show_note_context_menu_action_callback
+            ),  # Wrapper
         )
         entry_shortcut_controller.add_shortcut(context_menu_shortcut)
         self.entry.add_controller(entry_shortcut_controller)
@@ -45,9 +46,11 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.header.set_title_widget(self.entry)
 
-        self.notes = []
-        self.filtered_notes = []
-        self.current_note_path = None
+        self.notes = []  # Will store Note objects
+        self.filtered_notes = []  # Will store Note objects
+        self.current_note = None  # Will be a Note object or None
+
+        self.setup_actions()  # Setup actions before loading notes that might use them
         self.load_notes()
 
         self.create_ui()
@@ -59,6 +62,32 @@ class MainWindow(Adw.ApplicationWindow):
         self.add_controller(window_key_controller)
 
         self.entry.grab_focus()
+
+    def _show_note_context_menu_action_callback(self, widget, args):
+        self.show_note_context_menu()
+        return True  # Gtk.CallbackAction expects a boolean
+
+    def _toggle_sidebar_action_callback(self, widget, args):
+        self.toggle_sidebar()
+        return True  # Gtk.CallbackAction expects a boolean
+
+    def setup_actions(self):
+        """Setup Gio.SimpleActionGroup for note-specific actions."""
+        self.note_action_group = Gio.SimpleActionGroup()
+
+        open_editor_action = Gio.SimpleAction.new("open_with_editor", None)
+        open_editor_action.connect("activate", self.on_open_with_editor_action)
+        self.note_action_group.add_action(open_editor_action)
+
+        rename_action = Gio.SimpleAction.new("rename_note", None)
+        rename_action.connect("activate", self.on_rename_note_action)
+        self.note_action_group.add_action(rename_action)
+
+        delete_action = Gio.SimpleAction.new("delete_note", None)
+        delete_action.connect("activate", self.on_delete_note_action)
+        self.note_action_group.add_action(delete_action)
+
+        self.insert_action_group("app", self.note_action_group)
 
     def create_ui(self):
         # Main layout with headerbar
@@ -119,7 +148,7 @@ class MainWindow(Adw.ApplicationWindow):
         shortcut_controller = Gtk.ShortcutController.new()
         toggle_sidebar_shortcut = Gtk.Shortcut.new(
             Gtk.ShortcutTrigger.parse_string("<control>b"),
-            Gtk.CallbackAction.new(self.toggle_sidebar, None),
+            Gtk.CallbackAction.new(self._toggle_sidebar_action_callback),  # Wrapper
         )
         shortcut_controller.add_shortcut(toggle_sidebar_shortcut)
 
@@ -128,7 +157,9 @@ class MainWindow(Adw.ApplicationWindow):
     def show_note_context_menu(self, *args):
         """Shows the context menu for the currently selected note."""
         selected_row = self.note_list.get_selected_row()
-        if not selected_row or not hasattr(selected_row, "filename"):
+        if not selected_row or not hasattr(
+            selected_row, "note_object"
+        ):  # Changed from get_data
             return
 
         # Create menu model
@@ -140,24 +171,7 @@ class MainWindow(Adw.ApplicationWindow):
         # Create PopoverMenu
         popover_menu = Gtk.PopoverMenu.new_from_model(menu_model)
         popover_menu.set_parent(selected_row)
-
-        # Setup actions
-        action_group = Gio.SimpleActionGroup()
-        action_group.add_action(Gio.SimpleAction.new("open_with_editor", None))
-        action_group.add_action(Gio.SimpleAction.new("rename_note", None))
-        action_group.add_action(Gio.SimpleAction.new("delete_note", None))
-
-        action_group.lookup_action("open_with_editor").connect(
-            "activate", self.on_open_with_editor_action
-        )
-        action_group.lookup_action("rename_note").connect(
-            "activate", self.on_rename_note_action
-        )
-        action_group.lookup_action("delete_note").connect(
-            "activate", self.on_delete_note_action
-        )
-
-        self.insert_action_group("app", action_group)
+        # Actions are already set up in self.note_action_group and inserted with "app" prefix
         popover_menu.popup()
 
     def find_notes_recursively(self, directory):
@@ -166,7 +180,7 @@ class MainWindow(Adw.ApplicationWindow):
             for file in files:
                 if file.endswith(EXT):
                     rel_path = os.path.relpath(os.path.join(root, file), NOTES_DIR)
-                    notes.append(rel_path)
+                    notes.append(Note(rel_path))  # Create Note objects
         return notes
 
     def load_notes(self):
@@ -174,11 +188,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.notes = self.find_notes_recursively(NOTES_DIR)
 
     def refresh_note_list(self):
-        # Keep track of the currently selected note's filename (relative path)
-        selected_filename = None
-        selected_row = self.note_list.get_selected_row()
-        if selected_row and hasattr(selected_row, "filename"):
-            selected_filename = selected_row.filename
+        # Keep track of the currently selected note's relative path
+        selected_note_relative_path = None
+        if self.current_note:
+            selected_note_relative_path = self.current_note.relative_path
 
         # Remove all children from the list box
         while True:
@@ -190,19 +203,20 @@ class MainWindow(Adw.ApplicationWindow):
         # Filter and sort notes
         search_text = self.entry.get_text().lower()
         self.filtered_notes = [
-            note for note in self.notes if search_text in note.lower()
+            note
+            for note in self.notes
+            if search_text in note.relative_path.lower()  # Use note.relative_path
         ]
-        self.filtered_notes.sort(key=lambda x: x.split(os.sep))
+        self.filtered_notes.sort(
+            key=lambda note: note.display_name.split(os.sep)
+        )  # Use note.relative_path
 
         # Add filtered notes to the list box
         select_row_after_refresh = None
-        for note in self.filtered_notes:
+        for note_obj in self.filtered_notes:  # Iterate over Note objects
             row = Gtk.ListBoxRow()
 
-            # Strip the file extension for display
-            display_name = os.path.splitext(note)[0]
-
-            label = Gtk.Label(label=display_name)
+            label = Gtk.Label(label=note_obj.display_name)
             label.set_ellipsize(Pango.EllipsizeMode.END)
             label.set_max_width_chars(80)
             label.set_xalign(0)
@@ -211,8 +225,8 @@ class MainWindow(Adw.ApplicationWindow):
             label.set_margin_top(5)
             label.set_margin_bottom(5)
 
-            # Store the actual filename with extension as a Python attribute
-            row.filename = note
+            # Store the Note object as a Python attribute
+            row.note_object = note_obj  # Changed from set_data
 
             row.set_child(label)
             self.note_list.append(row)
@@ -224,17 +238,27 @@ class MainWindow(Adw.ApplicationWindow):
             row.add_controller(context_menu_gesture)
 
             # If this row was previously selected, mark it for re-selection
-            if note == selected_filename:
+            if (
+                note_obj.relative_path == selected_note_relative_path
+            ):  # Compare relative_path
                 select_row_after_refresh = row
 
         # Re-select the previously selected row if it still exists, otherwise select the first
         if select_row_after_refresh:
             self.note_list.select_row(select_row_after_refresh)
         elif self.note_list.get_row_at_index(0):
-            self.note_list.select_row(self.note_list.get_row_at_index(0))
+            first_row = self.note_list.get_row_at_index(0)
+            self.note_list.select_row(first_row)
+            # Update current_note if a new first row is selected
+            if first_row:
+                if hasattr(first_row, "note_object"):  # Changed from get_data
+                    note_obj = first_row.note_object
+                    if note_obj:
+                        self.current_note = note_obj
+                        self.load_note_into_view()  # Load content for the new selection
         else:
             # No rows left, clear content area
-            self.current_note_path = None
+            self.current_note = None
             self.note_content_view.set_content("")  # Clear content in the view
 
         self.entry.grab_focus()  # Ensure the search entry is focused
@@ -256,14 +280,18 @@ class MainWindow(Adw.ApplicationWindow):
                 if current_index > 0:
                     next_row = self.note_list.get_row_at_index(current_index - 1)
                     self.note_list.select_row(next_row)
-                    self.note_list.get_selected_row().grab_focus()
+                    selected_row = self.note_list.get_selected_row()
+                    if selected_row:
+                        selected_row.grab_focus()
                 return Gdk.EVENT_STOP
 
             elif keyval == Gdk.KEY_Down:
                 if current_index < num_rows - 1:
                     next_row = self.note_list.get_row_at_index(current_index + 1)
                     self.note_list.select_row(next_row)
-                    self.note_list.get_selected_row().grab_focus()
+                    selected_row = self.note_list.get_selected_row()
+                    if selected_row:
+                        selected_row.grab_focus()
                 return Gdk.EVENT_STOP
 
         return Gdk.EVENT_PROPAGATE
@@ -287,65 +315,71 @@ class MainWindow(Adw.ApplicationWindow):
         query = entry.get_text().strip()
         if not query:
             # If query is empty and a note is selected, open the selected note for editing
-            selected_row = self.note_list.get_selected_row()
-            if selected_row:
-                self.on_note_selected(self.note_list, selected_row)
-                self.note_content_view.enter_edit_mode()  # Delegate to new widget
+            if self.current_note:  # Check if current_note exists
+                self.note_content_view.enter_edit_mode()
             return
 
         # Add extension if not already present
         if not query.lower().endswith(EXT):
-            filename = query + EXT
+            filename_with_ext = query + EXT
         else:
-            filename = query
-            query = os.path.splitext(query)[0]  # Use base name for title
+            filename_with_ext = query
+            # query = os.path.splitext(query)[0] # query is used for title, keep it as is or derive from filename_with_ext
 
-        filename_relative = os.path.relpath(
-            os.path.join(NOTES_DIR, filename), NOTES_DIR
+        # Ensure the filename is relative to NOTES_DIR, handling potential subdirectories
+        # If query already contains slashes, treat it as a path
+        if os.path.sep in filename_with_ext:
+            relative_path = os.path.normpath(filename_with_ext)
+        else:  # Simple filename, place in root of NOTES_DIR
+            relative_path = filename_with_ext
+
+        # Check if a note with this relative path already exists in self.notes
+        existing_note = next(
+            (n for n in self.notes if n.relative_path.lower() == relative_path.lower()),
+            None,
         )
-        filename_full_path = os.path.join(NOTES_DIR, filename_relative)
 
-        if not len(self.filtered_notes):
-            try:
-                os.makedirs(os.path.dirname(filename_full_path), exist_ok=True)
-                initial_content = f"# {query}\n\n"
-                with open(filename_full_path, "w") as f:
-                    f.write(initial_content)
-                self.notes.append(filename_relative)
-                self.notes.sort()
-                self.refresh_note_list()
+        if existing_note:
+            # Note exists, select it
+            for i, note_obj in enumerate(self.filtered_notes):
+                if note_obj == existing_note:
+                    row = self.note_list.get_row_at_index(i)
+                    if row:
+                        self.note_list.select_row(row)
+                        self.on_note_selected(
+                            self.note_list, row
+                        )  # This will set self.current_note
+                        self.note_content_view.enter_edit_mode()
+                    break
+        else:
+            # Note does not exist, create it
+            title_for_content = os.path.splitext(os.path.basename(relative_path))[0]
+            initial_content = f"# {title_for_content}\n\n"
+            new_note = Note.create(relative_path, initial_content)
 
-                # Select the newly created note
-                for i, note in enumerate(self.filtered_notes):
-                    if note == filename_relative:
+            if new_note:
+                self.notes.append(new_note)
+                # self.notes.sort(key=lambda n: n.relative_path) # Keep sorted if desired
+                self.current_note = new_note  # Set as current note
+                self.refresh_note_list()  # This will re-filter and re-select
+
+                # Ensure the new note is selected and edit mode is entered
+                # refresh_note_list should handle selection, but we might need to force edit mode
+                # Find the row corresponding to the new_note and enter edit mode
+                for i, note_obj_in_list in enumerate(self.filtered_notes):
+                    if note_obj_in_list.relative_path == new_note.relative_path:
                         row = self.note_list.get_row_at_index(i)
                         if row:
-                            self.note_list.select_row(row)
-                            # Manually trigger selection logic to ensure content is loaded
-                            self.on_note_selected(self.note_list, row)
-                            self.note_content_view.enter_edit_mode()  # Enter edit mode for new note
+                            self.note_list.select_row(row)  # Ensure it's selected
+                            self.on_note_selected(self.note_list, row)  # Load it
+                            self.note_content_view.enter_edit_mode()
                         break
-            except OSError as e:
-                print(
-                    f"Error creating note {filename_full_path}: {e}"
-                )  # Basic error handling
-                # Optionally show an error dialog
-        else:
-            # If a matching note exists, select it
-            for i, note in enumerate(self.filtered_notes):
-                idx = self.note_list.get_selected_row().get_index()
-                if note == self.filtered_notes[idx]:  # Select the first match
-                    row = self.note_list.get_row_at_index(i)
-                    row.grab_focus()
-                    self.on_note_selected(self.note_list, row)
-                    # self.note_content_view.set_content
-                    # Use a short delay before selecting to ensure the listbox is ready
-                    # This can sometimes prevent issues with immediate selection after refresh
-                    # GLib.timeout_add(
-                    #     50, self.select_row_after_creation, row, matching_notes[0]
-                    # )
+            else:
+                print(f"Error creating note {relative_path}")
 
-    def select_row_after_creation(self, row, note_filename_relative):
+    def select_row_after_creation(
+        self, row, note_filename_relative
+    ):  # This might be redundant now
         """Helper to select a row after a short delay."""
         if row:
             self.note_list.select_row(row)
@@ -354,33 +388,35 @@ class MainWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE  # Remove the timeout source
 
     def on_note_selected(self, listbox, row):
-        if row and hasattr(row, "filename"):
-            note_name = row.filename
-            self.current_note_path = os.path.join(NOTES_DIR, note_name)
-            self.load_note_into_view()  # Load content into the NoteContentView
-            # Hide the sidebar on narrow widths after selecting a note if hide mode is active
-            if (
-                hasattr(self.split_view, "get_hide_sidebar")
-                and self.split_view.get_hide_sidebar()
-            ):
-                self.entry.set_text("")
-                self.split_view.set_show_sidebar(False)
+        if row:
+            if hasattr(row, "note_object"):  # Changed from get_data
+                note_obj = row.note_object
+                if note_obj:
+                    self.current_note = note_obj
+                    self.load_note_into_view()  # Load content into the NoteContentView
+                    # Hide the sidebar on narrow widths after selecting a note if hide mode is active
+                    if (
+                        self.split_view.get_collapsed()
+                    ):  # Check if sidebar is collapsed (narrow view)
+                        self.entry.set_text("")
+                        self.split_view.set_show_sidebar(False)
         else:
             # Handle case where selection is cleared or an invalid row is selected
-            self.current_note_path = None
+            self.current_note = None
             self.note_content_view.set_content("")  # Clear content in the view
 
     def on_row_right_click(self, gesture, n_press, x, y):
-        # Ensure it's a right-click (BUTTON_SECONDARY = 3) and only one press
+        # Ensure it\\'s a right-click (BUTTON_SECONDARY = 3) and only one press
         if n_press == 1 and gesture.get_current_button() == Gdk.BUTTON_SECONDARY:
             row = gesture.get_widget()  # Get the row that was clicked
-            if not row or not hasattr(row, "filename"):
-                return  # Should not happen if attached correctly
+            if not row or not hasattr(row, "note_object"):  # Changed from get_data
+                return
 
             # Select the row first so that subsequent actions apply to it
             self.note_list.select_row(row)
-            # Update current_note_path
-            self.current_note_path = os.path.join(NOTES_DIR, row.filename)
+            # Update current_note
+            if hasattr(row, "note_object"):  # Ensure attribute exists
+                self.current_note = row.note_object  # Changed from get_data
 
             # Create a menu model
             menu_model = Gio.Menu.new()
@@ -390,24 +426,7 @@ class MainWindow(Adw.ApplicationWindow):
             # Create a PopoverMenu
             popover_menu = Gtk.PopoverMenu.new_from_model(menu_model)
             popover_menu.set_parent(row)  # Attach to the clicked row
-
-            # Map actions to handlers
-            # Use self for the actions, as they are methods of NotesApp
-            action_group = Gio.SimpleActionGroup()
-            action_group.add_action(Gio.SimpleAction.new("rename_note", None))
-            action_group.add_action(Gio.SimpleAction.new("delete_note", None))
-
-            action_group.lookup_action("rename_note").connect(
-                "activate", self.on_rename_note_action
-            )
-            action_group.lookup_action("delete_note").connect(
-                "activate", self.on_delete_note_action
-            )
-
-            self.insert_action_group("app", action_group)  # Register the action group
-
-            # Position and show the popover
-            # Use the clicked row as the target for positioning
+            # Actions are already set up in self.note_action_group and inserted with "app" prefix
             popover_menu.popup()
 
     # Modified handlers to be Gio.Action activated
@@ -418,24 +437,26 @@ class MainWindow(Adw.ApplicationWindow):
         self.on_delete_note(None)  # Call the existing delete logic
 
     def on_open_with_editor_action(self, action, parameter):
-        """Handler for opening the current note with the system's default editor"""
-        if not self.current_note_path:
+        """Handler for opening the current note with the system\'s default editor"""
+        if not self.current_note:  # Check current_note
             return
 
         try:
-            Gtk.show_uri(None, f"file://{self.current_note_path}", Gdk.CURRENT_TIME)
+            Gtk.show_uri(
+                None, f"file://{self.current_note.full_path}", Gdk.CURRENT_TIME
+            )  # Use current_note.full_path
         except Exception as e:
             print(f"Error opening note with default editor: {e}")
 
     def on_rename_note(
-        self, menu_item
+        self,
+        menu_item,  # menu_item is not used here, can be removed if not used by Gtk.CallbackAction either
     ):  # Keep this function, called by the action handler
-        if not self.current_note_path:
+        if not self.current_note:  # Check current_note
             return  # No note selected
 
-        current_filename_relative = os.path.relpath(self.current_note_path, NOTES_DIR)
-        current_name_without_ext = os.path.splitext(current_filename_relative)[0]
-        current_directory_relative = os.path.dirname(current_filename_relative)
+        current_name_without_ext = os.path.splitext(self.current_note.filename)[0]
+        # current_directory_relative = self.current_note.directory_relative # Unused
 
         # Create a dialog to get the new name
         dialog = Gtk.Dialog(title="Rename Note", transient_for=self, modal=True)
@@ -465,8 +486,8 @@ class MainWindow(Adw.ApplicationWindow):
             "response",
             self.on_rename_dialog_response,
             entry,
-            current_filename_relative,
-            current_directory_relative,
+            # current_filename_relative, # No longer pass old relative path, get from self.current_note
+            # current_directory_relative, # No longer pass old relative path
         )
 
     def on_rename_dialog_response(
@@ -474,58 +495,52 @@ class MainWindow(Adw.ApplicationWindow):
         dialog,
         response_id,
         entry,
-        current_filename_relative,
-        current_directory_relative,
+        # current_filename_relative, # Removed
+        # current_directory_relative, # Removed
     ):
         if response_id == Gtk.ResponseType.OK:
-            new_name = entry.get_text().strip()
+            new_name_base = entry.get_text().strip()
             dialog.destroy()
 
-            if not new_name:
+            if not self.current_note:  # Should not happen if dialog was opened
+                return
+
+            if not new_name_base:
                 print("New name cannot be empty.")
                 return
 
-            new_name_with_ext = new_name + EXT
-
-            if current_directory_relative == ".":
-                new_filename_relative = new_name_with_ext
+            # Construct new relative path, preserving original directory
+            current_dir_rel = self.current_note.directory_relative
+            if current_dir_rel and current_dir_rel != ".":
+                new_relative_path = os.path.join(current_dir_rel, new_name_base + EXT)
             else:
-                new_filename_relative = os.path.join(
-                    current_directory_relative, new_name_with_ext
+                new_relative_path = new_name_base + EXT
+
+            # Check if a note with the new name already exists (excluding the current note itself)
+            for note in self.notes:
+                if (
+                    note.relative_path.lower() == new_relative_path.lower()
+                    and note != self.current_note
+                ):
+                    print(
+                        f"Note with name '{new_name_base}' already exists in that location."
+                    )
+                    return
+
+            if self.current_note.rename(new_relative_path):
+                # The Note object's internal relative_path has been updated by the rename method.
+                self.notes.sort(key=lambda n: n.relative_path)
+                self.refresh_note_list()  # This will find the renamed note and re-select
+            else:
+                print(
+                    f"Error renaming note: {self.current_note.full_path} to {new_relative_path}"
                 )
-
-            new_full_path = os.path.join(NOTES_DIR, new_filename_relative)
-
-            existing_notes_lower = [n.lower() for n in self.notes]
-            if new_filename_relative.lower() in existing_notes_lower:
-                print(f"Note with name '{new_name}' already exists.")
-                return
-
-            try:
-                os.makedirs(os.path.dirname(new_full_path), exist_ok=True)
-                shutil.move(self.current_note_path, new_full_path)
-
-                try:
-                    self.notes.remove(current_filename_relative)
-                except ValueError:
-                    pass
-
-                self.notes.append(new_filename_relative)
-                self.notes.sort()
-
-                self.current_note_path = new_full_path
-                self.refresh_note_list()
-
-            except OSError as e:
-                print(f"Error renaming note: {e}")
         else:
             dialog.destroy()
 
     def on_delete_note(self, menu_item):
-        if not self.current_note_path:
+        if not self.current_note:  # Check current_note
             return
-
-        filename = os.path.basename(self.current_note_path)
 
         # Create a confirmation dialog
         dialog = Gtk.MessageDialog(
@@ -534,7 +549,7 @@ class MainWindow(Adw.ApplicationWindow):
             buttons=Gtk.ButtonsType.NONE,
             message_type=Gtk.MessageType.WARNING,
             text="Confirm Delete",
-            secondary_text=f"Are you sure you want to delete the note '{filename}'?",
+            secondary_text=f"Are you sure you want to delete the note '{self.current_note.filename}'?",  # Use current_note.filename
         )
         dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dialog.add_button("Delete", Gtk.ResponseType.OK)
@@ -547,43 +562,35 @@ class MainWindow(Adw.ApplicationWindow):
         if response != Gtk.ResponseType.OK:
             return
 
-        if not self.current_note_path:
+        if not self.current_note:  # Check current_note
             return
 
-        filename_relative = os.path.relpath(self.current_note_path, NOTES_DIR)
-        deleted_note_was_current = self.current_note_path == os.path.join(
-            NOTES_DIR, filename_relative
-        )
+        note_to_delete = self.current_note  # Keep a reference
 
-        try:
-            os.remove(self.current_note_path)
-
+        if note_to_delete.delete():
             try:
-                self.notes.remove(filename_relative)
+                self.notes.remove(note_to_delete)  # Remove the Note object
             except ValueError:
-                pass
+                pass  # Should not happen if it was self.current_note
 
-            if deleted_note_was_current:
-                self.current_note_path = None
+            if (
+                self.current_note == note_to_delete
+            ):  # If the deleted note was the current one
+                self.current_note = None
                 self.note_content_view.set_content("")
 
-            self.refresh_note_list()
-
-        except OSError as e:
-            print(f"Error deleting note {self.current_note_path}: {e}")
+            self.refresh_note_list()  # Refresh list, will select next or clear
+        else:
+            print(f"Error deleting note {note_to_delete.full_path}")
 
     def load_note_into_view(self):
         """
         Loads the content of the current note into the NoteContentView widget.
         """
         content = ""
-        if self.current_note_path and os.path.exists(self.current_note_path):
-            try:
-                with open(self.current_note_path, "r") as f:
-                    content = f.read()
-            except OSError as e:
-                print(f"Error loading note {self.current_note_path}: {e}")
-                # Content remains empty on error
+        if self.current_note:  # Check current_note
+            content = self.current_note.load()  # Use current_note.load()
+            # Error handling is now inside Note.load()
 
         # Set the content in the NoteContentView widget (defaults to preview mode)
         self.note_content_view.set_content(content, is_editing=False)
@@ -593,23 +600,23 @@ class MainWindow(Adw.ApplicationWindow):
         Handler for the 'content-saved' signal from NoteContentView.
         Saves the content to the current note file.
         """
-        if self.current_note_path:
-            # Ensure directory exists before saving
-            os.makedirs(os.path.dirname(self.current_note_path), exist_ok=True)
-            try:
-                with open(self.current_note_path, "w") as f:
-                    f.write(content)
-                # print(f"Saved: {self.current_note_path}") # For debugging
-            except OSError as e:
-                print(f"Error saving note {self.current_note_path}: {e}")
-                # Optionally show an error dialog
+        if self.current_note:  # Check current_note
+            if not self.current_note.save(content):  # Use current_note.save()
+                # Error is printed by Note.save()
+                # Optionally show an error dialog to the user here
+                pass
+            # print(f"Saved: {self.current_note.full_path}") # For debugging
+        else:
+            print("No current note to save.")
 
     def on_content_view_edit_exited(self, note_content_view):
         """
         Handler for the 'edit-mode-exited' signal from NoteContentView.
         Returns focus to the search entry.
         """
-        self.note_list.get_selected_row().grab_focus()
+        selected_row = self.note_list.get_selected_row()
+        if selected_row:
+            selected_row.grab_focus()
         # self.entry.grab_focus()
 
     def on_window_key_press(self, controller, keyval, keycode, state, user_data=None):
@@ -640,4 +647,32 @@ class MainWindow(Adw.ApplicationWindow):
 
     def navigate_to_note(self, note_path):
         """Navigate to a note by its relative path"""
-        self.entry.set_text(note_path)  # Clear search
+        self.entry.set_text(
+            os.path.splitext(note_path)[0]
+        )  # Set search text to allow refresh_note_list to find it
+        self.refresh_note_list()  # This will filter and potentially select the note
+
+        # After refresh, explicitly find and select if not already
+        found_note = next(
+            (n for n in self.filtered_notes if n.relative_path == note_path), None
+        )
+        if found_note:
+            for i, note_obj_in_list in enumerate(self.filtered_notes):
+                if note_obj_in_list == found_note:  # Corrected variable name
+                    row = self.note_list.get_row_at_index(i)
+                    if row:
+                        if self.note_list.get_selected_row() != row:
+                            self.note_list.select_row(row)
+                            self.on_note_selected(
+                                self.note_list, row
+                            )  # Ensure it's loaded
+                        # If you want to directly open it for editing:
+                        # self.note_content_view.enter_edit_mode()
+                    break
+        else:
+            # If note_path was intended to be a new note, on_entry_activate handles creation
+            # This function is more for navigating to existing notes via external calls (e.g. CLI)
+            self.entry.set_text(
+                note_path
+            )  # Set the full path for creation if it doesn't exist
+            self.on_entry_activate(self.entry)

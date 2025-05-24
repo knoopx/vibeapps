@@ -1,6 +1,6 @@
 import subprocess
 from gi.repository import GLib, GObject, Gdk, Gtk, GtkSource, WebKit
-
+from constants import NOTES_DIR
 
 import threading
 
