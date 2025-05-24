@@ -55,7 +55,7 @@ class Scanner:
                 )
                 release._release_name = release_name  # Store reference
                 release.artwork_path = tracks[0].artwork_path
-                release.label = release_name.label
+                release.group = release_name.group
                 release.tags = release_name.tags
 
                 # Set release reference for each track

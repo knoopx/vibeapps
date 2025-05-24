@@ -19,7 +19,7 @@ class Release(GObject.GObject):
     artist = GObject.Property(type=str)
     internal_year = GObject.Property(type=int, default=-1)
     artwork_path = GObject.Property(type=str)
-    label = GObject.Property(type=str)
+    group = GObject.Property(type=str)
     path = GObject.Property(type=str)  # Add path property
 
     def __init__(self, title: str, artist: str, path: str, year: Optional[int] = None):
@@ -51,14 +51,14 @@ class Release(GObject.GObject):
         return " · ".join(sorted(self.tags)) if self.tags else ""
 
     def label_string(self) -> str:
-        return self.label if self.label else ""
+        return self.group if self.group else ""
 
     def to_json(self):
         return {
             "title": self.title,
             "artist": self.artist,
             "year": self.year,
-            "label": self.label,
+            "label": self.group,
             "path": self.path,  # Add path to JSON serialization
             "tags": list(self.tags),
             "starred": self.starred,  # Add starred to JSON serialization
@@ -74,7 +74,7 @@ class Release(GObject.GObject):
         from track import Track  # Import here to avoid circular dependency
 
         release = cls(data["title"], data["artist"], data["path"], data["year"])
-        release.label = data["label"]
+        release.group = data["label"]
         release.tags = set(data["tags"])
         release.starred = data.get(
             "starred", False

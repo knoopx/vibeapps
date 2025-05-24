@@ -389,8 +389,8 @@ class MainWindow(Adw.ApplicationWindow):
             tags_box.remove(tags_box.get_first_child())
 
         # Add label pill if it exists
-        if release.label:
-            label_pill = Gtk.Label(label=release.label)
+        if release.group:
+            label_pill = Gtk.Label(label=release.group)
             label_pill.add_css_class("tag-pill")
             label_pill.add_css_class("caption")
             label_pill.add_css_class("dim-label")

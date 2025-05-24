@@ -50,8 +50,8 @@ class ReleaseName(str):
     TAG_PATTERNS = {
         "media_source": r"\b(?:vinyl|cd|web|dvda|dvd|tape|vls|sat|cable|digital)\b",
         "media_length": r"\b(?:\d+(?:cd|lp)|ep|lp|cdm|cds|mcd|\d+(?:inch))\b",
-        "special_tags": r"\b(?:remix|bonus|demo|ost|ltd\.?|limited|promo|sampler|retail|bootleg|single)\b",
-        "rip_tags": r"\b(?:proper|advance|rerip|flac|mp3|320|v0|v2|aac)\b",
+        "special_tags": r"\b(?:remix|bonus|reissue|demo|ost|ltd\.?|limited|promo|sampler|retail|bootleg|single)\b",
+        "rip_tags": r"\b(?:proper|advance|rerip|flac)\b",
     }
 
     TAG_ALIASES = {
