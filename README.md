@@ -40,6 +40,11 @@ A simple interface to query and browser nix packages.
 
 ![Nix Packages](nix-packages/screenshot.png)
 
+### Scratchpad Calculator
+
+An interactive scratchpad calculator, similar to Soulver. (Work in Progress)
+
+<!-- Add screenshot once available -->
 
 ### WebKit Shell
 

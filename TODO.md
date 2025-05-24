@@ -1,0 +1,1 @@
+* Interactive scratchpad calculator (https://soulver.app/) - Basic structure implemented

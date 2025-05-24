@@ -19,6 +19,7 @@
       reminder = pkgs.callPackage ./reminder/reminder.nix {};
       webkit-shell = pkgs.callPackage ./webkit-shell/webkit-shell.nix {};
       nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
+      scratchpad = pkgs.callPackage ./scratchpad/scratchpad.nix {};
     };
   };
 }
