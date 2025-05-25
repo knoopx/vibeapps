@@ -12,7 +12,7 @@
 
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-QfcaPTdm2V7p/DFdZUjrne97JbXZMnDbZ+EGCfwaBsU=";
+    outputHash = "sha256-xviAtPg383or+HJjtNEFmnWxfA8qP+UFl3i/2N9tUK8=";
 
     buildPhase = ''
       bun add vite react react-dom @mdxeditor/editor
@@ -22,14 +22,14 @@
 
   assets = pkgs.stdenv.mkDerivation {
     name = "mdx-editor-assets";
-    src = ./mdx-editor;
+    src = ./template;
     nativeBuildInputs = with pkgs; [
       bun
     ];
 
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-ECCgyI/z3ZqUoB4JKxbDFe/O6YlMpzfuFscry2MAFEM=";
+    outputHash = "sha256-PE26fR3p4DpMTX9WI4pil5dvVM9nUIQGYQVbtt2M894=";
 
     buildPhase = ''
       cp -r ${deps} node_modules
