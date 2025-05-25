@@ -99,6 +99,7 @@ class ChatAppWindow(Gtk.ApplicationWindow):
         self.streamer = OpenAIStreamer()
         self.current_assistant_message = ""
         self.current_assistant_webview = None  # Add this attribute to store the webview reference
+        self.webview_heights = {}  # Track current height for each webview
 
         self.set_default_size(600, 700)
         self.set_title("Chat")
@@ -229,8 +230,18 @@ class ChatAppWindow(Gtk.ApplicationWindow):
             if js_value and js_value.is_number():
                 height = int(js_value.to_double())  # Use to_double for safety, then int
                 print(f"Got height from JS: {height}")
-                # Use user_data to access the instance and call the method
-                user_data.update_webview_height(web_view, height)
+
+                # Get current height for this webview
+                webview_id = id(web_view)
+                current_height = user_data.webview_heights.get(webview_id, 0)
+
+                # Only update if new height is larger than current
+                if height > current_height:
+                    user_data.webview_heights[webview_id] = height
+                    user_data.update_webview_height(web_view, height)
+                    print(f"Height updated from {current_height} to {height}")
+                else:
+                    print(f"Height not updated: {height} <= {current_height}")
             else:
                 print("Got non-numeric or null JS value")
                 # Do not update height if value is invalid
