@@ -8,8 +8,10 @@
     pkgs = nixpkgs.legacyPackages.${system};
   in {
     packages.x86_64-linux = {
+      bookmarks = pkgs.callPackage ./bookmarks/bookmarks.nix {};
       chat = pkgs.callPackage ./chat/chat.nix {};
       dataset-viewer = pkgs.callPackage ./dataset-viewer/dataset-viewer.nix {};
+      firefox-bookmarks = pkgs.callPackage ./firefox-bookmarks/firefox-bookmarks.nix {};
       launcher = pkgs.callPackage ./launcher/launcher.nix {};
       md2html = pkgs.callPackage ./md2html/md2html.nix {};
       mdx-editor = pkgs.callPackage ./mdx-editor/mdx-editor.nix {};
