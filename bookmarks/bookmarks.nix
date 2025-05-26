@@ -5,8 +5,11 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "bookmarks";
-    src = ./bookmarks.py;
-    dontUnpack = true;
+    src = pkgs.runCommand "bookmarks-src" {} ''
+      mkdir -p $out
+      cp ${./bookmarks.py} $out/bookmarks.py
+      cp ${../picker_window.py} $out/picker_window.py
+    '';
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -30,7 +33,16 @@
     '';
 
     buildPhase = ''
-      install -m 755 -D $src $out/bin/bookmarks
+      mkdir -p $out/bin $out/lib/python
+      cp $src/picker_window.py $out/lib/python/
+      cp $src/bookmarks.py $out/bin/bookmarks
+      chmod +x $out/bin/bookmarks
+    '';
+
+    postFixup = ''
+      # Ensure picker_window.py is in the Python path
+      wrapProgram $out/bin/bookmarks \
+        --prefix PYTHONPATH : $out/lib/python
     '';
 
     meta.mainProgram = "bookmarks";

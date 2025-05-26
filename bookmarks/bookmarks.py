@@ -10,12 +10,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
 
-from gi.repository import Gtk, Adw, Gio, GLib, GObject, Gdk, Pango
+from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Pango
+from picker_window import PickerWindow, PickerItem
 
 APP_ID = "net.knoopx.bookmarks"
 
 
-class BookmarkItem(GObject.Object):
+class BookmarkItem(PickerItem):
     __gtype_name__ = "BookmarkItem"
 
     title = GObject.Property(type=str)
@@ -27,117 +28,64 @@ class BookmarkItem(GObject.Object):
         self.url = url
 
 
-class MainWindow(Adw.ApplicationWindow):
+class BookmarksWindow(PickerWindow):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.set_default_size(400, 800)
-        self.set_title("Bookmarks")
-
-        self._bookmark_store = Gio.ListStore.new(BookmarkItem)
-        self._filtered_store = Gtk.FilterListModel.new(self._bookmark_store, None)
-        self._search_delay_id = 0
+        super().__init__(
+            title="Bookmarks",
+            search_placeholder="Search bookmarks...",
+            window_size=(400, 800),
+            search_delay_ms=200,
+            **kwargs
+        )
         self._all_bookmarks = []
 
-        # Create a selection model
-        self._selection_model = Gtk.SingleSelection(model=self._filtered_store)
+    # Required abstract method implementations
+    def get_item_type(self):
+        return BookmarkItem
 
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.set_content(main_box)
+    def use_list_view(self):
+        return True  # Keep ListView approach
 
-        self._header_bar = Adw.HeaderBar()
-        main_box.append(self._header_bar)
+    def load_initial_data(self):
+        """Load bookmarks on startup."""
+        self.set_loading(True)
+        thread = threading.Thread(target=self._fetch_bookmarks)
+        thread.daemon = True
+        thread.start()
 
-        self._search_entry = Gtk.SearchEntry(
-            hexpand=True, placeholder_text="Search bookmarks..."
-        )
-        self._search_entry.connect("search-changed", self._on_search_changed)
-        self._search_entry.connect("activate", self._on_search_activated)
-        self._header_bar.set_title_widget(self._search_entry)
+    def on_search_changed(self, query):
+        """Filter bookmarks based on search query."""
+        self.remove_all_items()
 
-        self._content_stack = Gtk.Stack()
-        self._content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        main_box.append(self._content_stack)
+        if not query:
+            # Show all bookmarks
+            for bookmark in self._all_bookmarks:
+                self.add_item(bookmark)
+        else:
+            # Filter bookmarks
+            query_lower = query.lower()
+            for bookmark in self._all_bookmarks:
+                if (query_lower in bookmark.title.lower() or
+                    query_lower in bookmark.url.lower()):
+                    self.add_item(bookmark)
 
-        scrolled_window = Gtk.ScrolledWindow(vexpand=True)
+        if self._item_store.get_n_items() > 0:
+            self._show_results()
+        else:
+            self._show_empty(
+                title=f"No Results for '{query}'",
+                description="Try a different search term."
+            )
 
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("setup", self._on_list_item_setup)
-        factory.connect("bind", self._on_list_item_bind)
+    def on_item_activated(self, item):
+        """Open bookmark URL and quit."""
+        if item and item.url:
+            Gtk.show_uri(self, item.url, Gdk.CURRENT_TIME)
+            GLib.timeout_add(50, self.get_application().quit)
 
-        self._list_view = Gtk.ListView(model=self._selection_model, factory=factory)
-        self._list_view.set_vexpand(True)
-        self._list_view.set_hexpand(False)  # Don't allow horizontal expansion
-        self._list_view.set_can_focus(True)  # Allow ListView to receive focus
-
-        scrolled_window.set_child(self._list_view)
-        self._content_stack.add_named(scrolled_window, "results")
-
-        loading_page = Adw.StatusPage(
-            title="Loading Bookmarks...",
-            icon_name="user-bookmarks-symbolic",
-        )
-        spinner = Gtk.Spinner(
-            spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER
-        )
-        loading_page.set_child(spinner)
-        self._content_stack.add_named(loading_page, "loading")
-
-        self._empty_page = Adw.StatusPage(
-            title="Search Bookmarks",
-            description="Type your query in the search bar above.",
-            icon_name="user-bookmarks-symbolic",
-        )
-        self._content_stack.add_named(self._empty_page, "empty")
-
-        self._error_page = Adw.StatusPage(
-            title="Error Loading Bookmarks",
-            description="Could not fetch bookmark information.",
-            icon_name="dialog-error-symbolic",
-        )
-        self._content_stack.add_named(self._error_page, "error")
-
-        # Add event controller for key presses
-        key_controller = Gtk.EventControllerKey()
-        key_controller.connect("key-pressed", self._on_key_pressed)
-        self._search_entry.add_controller(key_controller)
-
-        # Load bookmarks on startup
-        self._load_bookmarks()
-
-    def _on_search_activated(self, _):
-        selected_pos = self._selection_model.get_selected()
-        if selected_pos != Gtk.INVALID_LIST_POSITION:
-            bookmark_item = self._filtered_store.get_item(selected_pos)
-            if bookmark_item and bookmark_item.url:
-                Gtk.show_uri(self, bookmark_item.url, Gdk.CURRENT_TIME)
-                GLib.timeout_add(50, self.get_application().quit)
-
-    def _scroll_to_selected(self):
-        """Scroll the ListView to make the selected item visible."""
-        selected_pos = self._selection_model.get_selected()
-        if selected_pos != Gtk.INVALID_LIST_POSITION:
-            # Use GLib.idle_add to ensure the ListView has been updated
-            GLib.idle_add(lambda: self._list_view.scroll_to(selected_pos, Gtk.ListScrollFlags.FOCUS, None))
-
-    def _on_key_pressed(self, controller, keyval, keycode, state):
-        selected_pos = self._selection_model.get_selected()
-
-        if keyval == Gdk.KEY_Escape:
-            self.get_application().quit()
-
-        if keyval == Gdk.KEY_Up:
-            if selected_pos != Gtk.INVALID_LIST_POSITION and selected_pos > 0:
-                self._selection_model.set_selected(selected_pos - 1)
-                self._scroll_to_selected()
-            return True
-        elif keyval == Gdk.KEY_Down:
-            if selected_pos != Gtk.INVALID_LIST_POSITION and selected_pos < self._filtered_store.get_n_items() - 1:
-                self._selection_model.set_selected(selected_pos + 1)
-                self._scroll_to_selected()
-            return True
-        return False
-
-    def _on_list_item_setup(self, factory, list_item):
+    # ListView-specific methods
+    def setup_list_item(self, list_item):
+        """Setup the UI for each bookmark item."""
         # Create a simple box that respects window width
         main_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -172,8 +120,8 @@ class MainWindow(Adw.ApplicationWindow):
 
         list_item.set_child(main_box)
 
-    def _on_list_item_bind(self, factory, list_item):
-        bookmark_item = list_item.get_item()
+    def bind_list_item(self, list_item, item):
+        """Bind bookmark data to the list item."""
         main_box = list_item.get_child()
 
         # Get the labels directly from the box
@@ -181,59 +129,24 @@ class MainWindow(Adw.ApplicationWindow):
         url_label = title_label.get_next_sibling()
 
         # Set the content
-        title_label.set_markup(f"<b>{GLib.markup_escape_text(bookmark_item.title)}</b>")
-        url_label.set_text(bookmark_item.url)
+        title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
+        url_label.set_text(item.url)
 
-    def _on_search_changed(self, search_entry):
-        if self._search_delay_id > 0:
-            GLib.source_remove(self._search_delay_id)
-        query = search_entry.get_text().strip().lower()
+    # Optional overrides
+    def get_empty_icon(self):
+        return "user-bookmarks-symbolic"
 
-        if not query:
-            # Show all bookmarks
-            self._filtered_store.set_filter(None)
-            if self._bookmark_store.get_n_items() > 0:
-                self._content_stack.set_visible_child_name("results")
-                self._selection_model.set_selected(0)
-                self._scroll_to_selected()
-            else:
-                self._content_stack.set_visible_child_name("empty")
-            self._search_delay_id = 0
-            return
+    def get_loading_icon(self):
+        return "user-bookmarks-symbolic"
 
-        self._search_delay_id = GLib.timeout_add(200, self._apply_filter, query)
+    def get_empty_title(self):
+        return "Search Bookmarks"
 
-    def _apply_filter(self, query):
-        self._search_delay_id = 0
-
-        # Create a filter function
-        def filter_func(item):
-            title_match = query in item.title.lower()
-            url_match = query in item.url.lower()
-            return title_match or url_match
-
-        # Create and apply the filter
-        filter_obj = Gtk.CustomFilter.new(filter_func)
-        self._filtered_store.set_filter(filter_obj)
-
-        if self._filtered_store.get_n_items() > 0:
-            self._content_stack.set_visible_child_name("results")
-            self._selection_model.set_selected(0)
-            self._scroll_to_selected()
-        else:
-            self._empty_page.set_title(f"No Results for '{GLib.markup_escape_text(query)}'")
-            self._empty_page.set_description("Try a different search term.")
-            self._content_stack.set_visible_child_name("empty")
-
-        return GLib.SOURCE_REMOVE
-
-    def _load_bookmarks(self):
-        self._content_stack.set_visible_child_name("loading")
-        thread = threading.Thread(target=self._fetch_bookmarks)
-        thread.daemon = True
-        thread.start()
+    def get_empty_description(self):
+        return "Type your query in the search bar above."
 
     def _fetch_bookmarks(self):
+        """Fetch bookmarks in a separate thread."""
         try:
             # Determine Firefox profile path
             firefox_home = os.path.expanduser("~/.mozilla/firefox")
@@ -289,32 +202,31 @@ class MainWindow(Adw.ApplicationWindow):
             GLib.idle_add(self._handle_error, str(e))
 
     def _process_bookmarks(self, bookmarks):
+        """Process fetched bookmarks in main thread."""
         if not self.get_visible() or not self.get_application():
             return GLib.SOURCE_REMOVE
 
-        self._bookmark_store.remove_all()
         self._all_bookmarks = bookmarks
 
         for bookmark in bookmarks:
-            self._bookmark_store.append(bookmark)
+            self.add_item(bookmark)
 
-        if self._bookmark_store.get_n_items() > 0:
-            self._content_stack.set_visible_child_name("results")
-            self._selection_model.set_selected(0)
-            self._scroll_to_selected()
+        if self._item_store.get_n_items() > 0:
+            self._show_results()
         else:
-            self._empty_page.set_title("No Bookmarks Found")
-            self._empty_page.set_description("Your Firefox profile appears to have no bookmarks.")
-            self._content_stack.set_visible_child_name("empty")
+            self._show_empty(
+                title="No Bookmarks Found",
+                description="Your Firefox profile appears to have no bookmarks."
+            )
 
         return GLib.SOURCE_REMOVE
 
     def _handle_error(self, error_message):
+        """Handle bookmark loading errors."""
         if not self.get_visible() or not self.get_application():
             return GLib.SOURCE_REMOVE
 
-        self._error_page.set_description(str(error_message))
-        self._content_stack.set_visible_child_name("error")
+        self._show_error(str(error_message))
         return GLib.SOURCE_REMOVE
 
 
@@ -324,7 +236,7 @@ class BookmarksApp(Adw.Application):
         self.connect("activate", self.on_activate)
 
     def on_activate(self, app):
-        self.win = MainWindow(application=app)
+        self.win = BookmarksWindow(application=app)
         self.win.present()
 
 
