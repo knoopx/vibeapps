@@ -5,8 +5,7 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "nix-packages";
-    src = ./nix-packages.py;
-    dontUnpack = true;
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -18,15 +17,20 @@
       libadwaita
     ];
 
-    preFixup = ''
-      gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
-        p.pygobject3
-        p.requests
-      ])}/${pkgs.python3.sitePackages}")
+    buildPhase = ''
+      mkdir -p $out/bin $out/lib/python
+      cp nix-packages.py $out/bin/nix-packages
+      cp ${../picker_window.py} $out/lib/python/picker_window.py
+      chmod +x $out/bin/nix-packages
     '';
 
-    buildPhase = ''
-      install -m 755 -D $src $out/bin/nix-packages
+    preFixup = ''
+      gappsWrapperArgs+=(
+        --prefix PYTHONPATH : "$out/lib/python:${pkgs.python3.withPackages (p: [
+        p.pygobject3
+        p.requests
+      ])}/${pkgs.python3.sitePackages}"
+      )
     '';
 
     meta.mainProgram = "nix-packages";
