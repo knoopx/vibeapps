@@ -117,6 +117,17 @@ class MainWindow(Adw.ApplicationWindow):
                 Gtk.show_uri(self, package_item.homepage, Gdk.CURRENT_TIME)
             GLib.timeout_add(50, self.get_application().quit)
 
+    def _scroll_to_selected(self):
+        """Scroll the ListView to make the selected item visible."""
+        selected_pos = self._selection_model.get_selected()
+        if selected_pos != Gtk.INVALID_LIST_POSITION:
+            # Use GLib.idle_add to ensure the ListView has been updated
+            GLib.idle_add(
+                lambda: self._list_view.scroll_to(
+                    selected_pos, Gtk.ListScrollFlags.FOCUS, None
+                )
+            )
+
     def _on_key_pressed(self, controller, keyval, keycode, state):
         selected_pos = self._selection_model.get_selected()
 
@@ -126,10 +137,12 @@ class MainWindow(Adw.ApplicationWindow):
         if keyval == Gdk.KEY_Up:
             if selected_pos > 0:
                 self._selection_model.set_selected(selected_pos - 1)
+                self._scroll_to_selected()
             return True
         elif keyval == Gdk.KEY_Down:
             if selected_pos < self._package_store.get_n_items() - 1:
                 self._selection_model.set_selected(selected_pos + 1)
+                self._scroll_to_selected()
             return True
         return False
 
@@ -342,6 +355,7 @@ class MainWindow(Adw.ApplicationWindow):
             if self._package_store.get_n_items() > 0:
                 self._content_stack.set_visible_child_name("results")
                 self._selection_model.set_selected(0)  # Select the first item
+                self._scroll_to_selected()
             else:
                 # This case implies packages_array was non-empty but all items were invalid
                 self._empty_page.set_title(

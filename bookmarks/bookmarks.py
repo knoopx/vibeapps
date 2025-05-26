@@ -4,6 +4,7 @@ import gi
 import subprocess
 import threading
 import os
+import getpass
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -110,6 +111,13 @@ class MainWindow(Adw.ApplicationWindow):
                 Gtk.show_uri(self, bookmark_item.url, Gdk.CURRENT_TIME)
                 GLib.timeout_add(50, self.get_application().quit)
 
+    def _scroll_to_selected(self):
+        """Scroll the ListView to make the selected item visible."""
+        selected_pos = self._selection_model.get_selected()
+        if selected_pos != Gtk.INVALID_LIST_POSITION:
+            # Use GLib.idle_add to ensure the ListView has been updated
+            GLib.idle_add(lambda: self._list_view.scroll_to(selected_pos, Gtk.ListScrollFlags.FOCUS, None))
+
     def _on_key_pressed(self, controller, keyval, keycode, state):
         selected_pos = self._selection_model.get_selected()
 
@@ -119,10 +127,12 @@ class MainWindow(Adw.ApplicationWindow):
         if keyval == Gdk.KEY_Up:
             if selected_pos != Gtk.INVALID_LIST_POSITION and selected_pos > 0:
                 self._selection_model.set_selected(selected_pos - 1)
+                self._scroll_to_selected()
             return True
         elif keyval == Gdk.KEY_Down:
             if selected_pos != Gtk.INVALID_LIST_POSITION and selected_pos < self._filtered_store.get_n_items() - 1:
                 self._selection_model.set_selected(selected_pos + 1)
+                self._scroll_to_selected()
             return True
         return False
 
@@ -173,6 +183,7 @@ class MainWindow(Adw.ApplicationWindow):
             if self._bookmark_store.get_n_items() > 0:
                 self._content_stack.set_visible_child_name("results")
                 self._selection_model.set_selected(0)
+                self._scroll_to_selected()
             else:
                 self._content_stack.set_visible_child_name("empty")
             self._search_delay_id = 0
@@ -196,6 +207,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self._filtered_store.get_n_items() > 0:
             self._content_stack.set_visible_child_name("results")
             self._selection_model.set_selected(0)
+            self._scroll_to_selected()
         else:
             self._empty_page.set_title(f"No Results for '{GLib.markup_escape_text(query)}'")
             self._empty_page.set_description("Try a different search term.")
@@ -216,7 +228,8 @@ class MainWindow(Adw.ApplicationWindow):
             profile_path = None
 
             # Try common profile patterns
-            for profile_dir in ["knoopx", "default", "default-release"]:
+            username = getpass.getuser()
+            for profile_dir in [username, "default", "default-release"]:
                 candidate = os.path.join(firefox_home, profile_dir)
                 if os.path.exists(candidate):
                     profile_path = candidate
@@ -276,6 +289,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self._bookmark_store.get_n_items() > 0:
             self._content_stack.set_visible_child_name("results")
             self._selection_model.set_selected(0)
+            self._scroll_to_selected()
         else:
             self._empty_page.set_title("No Bookmarks Found")
             self._empty_page.set_description("Your Firefox profile appears to have no bookmarks.")
