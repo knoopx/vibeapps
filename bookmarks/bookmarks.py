@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import gi
-import subprocess
 import threading
 import os
 import getpass
+import sqlite3
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -21,11 +21,13 @@ class BookmarkItem(PickerItem):
 
     title = GObject.Property(type=str)
     url = GObject.Property(type=str)
+    date_added = GObject.Property(type=int, default=0)  # Unix timestamp
 
-    def __init__(self, title, url):
+    def __init__(self, title, url, date_added=0):
         super().__init__()
         self.title = title
         self.url = url
+        self.date_added = date_added
 
 
 class BookmarksWindow(PickerWindow):
@@ -171,29 +173,38 @@ class BookmarksWindow(PickerWindow):
                 except OSError:
                     pass
 
-            # Run foxmarks command
-            cmd = ["foxmarks", "bookmarks"]
-            if profile_path:
-                cmd = ["foxmarks", "--profile-path", profile_path, "bookmarks"]
+            if not profile_path:
+                raise RuntimeError("Could not find Firefox profile directory")
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            # Query bookmarks directly from SQLite database
+            db_path = os.path.join(profile_path, "places.sqlite")
+            if not os.path.exists(db_path):
+                raise RuntimeError(f"places.sqlite not found at {db_path}")
 
-            if result.returncode != 0:
-                raise RuntimeError(f"foxmarks failed: {result.stderr}")
+            # Connect to SQLite database and query bookmarks with dates
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            # Query to get bookmarks with their added dates, sorted by most recent
+            query = """
+            SELECT p.title, p.url, b.dateAdded
+            FROM moz_places p
+            JOIN moz_bookmarks b ON p.id = b.fk
+            WHERE b.type = 1 AND p.url IS NOT NULL AND p.title IS NOT NULL
+            ORDER BY b.dateAdded DESC
+            """
+
+            cursor.execute(query)
+            results = cursor.fetchall()
+            conn.close()
 
             # Parse bookmarks
             bookmarks = []
-            for line in result.stdout.strip().split('\n'):
-                if line.strip() and ';' in line:
-                    parts = line.split(';', 1)  # Split only on first semicolon
-                    if len(parts) == 2:
-                        title, url = parts
-                        bookmarks.append(BookmarkItem(title.strip(), url.strip()))
+            for title, url, date_added in results:
+                if title and url:
+                    # Convert microseconds to seconds (Firefox stores dates in microseconds)
+                    date_added_seconds = date_added // 1000000 if date_added else 0
+                    bookmarks.append(BookmarkItem(title.strip(), url.strip(), date_added_seconds))
 
             GLib.idle_add(self._process_bookmarks, bookmarks)
 
