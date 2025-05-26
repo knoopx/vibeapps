@@ -8,8 +8,9 @@ import getpass
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+gi.require_version("Pango", "1.0")
 
-from gi.repository import Gtk, Adw, Gio, GLib, GObject, Gdk
+from gi.repository import Gtk, Adw, Gio, GLib, GObject, Gdk, Pango
 
 APP_ID = "net.knoopx.bookmarks"
 
@@ -65,7 +66,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._list_view = Gtk.ListView(model=self._selection_model, factory=factory)
         self._list_view.set_vexpand(True)
-        self._list_view.set_hexpand(True)
+        self._list_view.set_hexpand(False)  # Don't allow horizontal expansion
         self._list_view.set_can_focus(True)  # Allow ListView to receive focus
 
         scrolled_window.set_child(self._list_view)
@@ -137,40 +138,51 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     def _on_list_item_setup(self, factory, list_item):
-        box = Gtk.Box(
+        # Create a simple box that respects window width
+        main_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=6,
-            margin_top=6,
-            margin_bottom=6,
+            spacing=4,
+            margin_top=8,
+            margin_bottom=8,
             margin_start=12,
-            margin_end=12,
+            margin_end=12
         )
-        title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True)
+
+        # Title label with proper wrapping
+        title_label = Gtk.Label(
+            halign=Gtk.Align.START,
+            xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR
+        )
+        title_label.add_css_class("title-4")
+
+        # URL label with proper wrapping
         url_label = Gtk.Label(
-            halign=Gtk.Align.START, xalign=0, wrap=True, css_classes=["dim-label"]
+            halign=Gtk.Align.START,
+            xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.CHAR
         )
-        box.append(title_label)
-        box.append(url_label)
-        list_item.set_child(Adw.ActionRow(child=box))
+        url_label.add_css_class("dim-label")
+        url_label.add_css_class("caption")
+
+        main_box.append(title_label)
+        main_box.append(url_label)
+
+        list_item.set_child(main_box)
 
     def _on_list_item_bind(self, factory, list_item):
         bookmark_item = list_item.get_item()
-        action_row = list_item.get_child()
-        box = action_row.get_child()
-        widgets = {}
-        child = box.get_first_child()
-        idx = 0
-        while child:
-            if idx == 0:
-                widgets["title"] = child
-            elif idx == 1:
-                widgets["url"] = child
-            child = child.get_next_sibling()
-            idx += 1
-        widgets["title"].set_markup(
-            f"<big><b>{GLib.markup_escape_text(bookmark_item.title)}</b></big>"
-        )
-        widgets["url"].set_text(bookmark_item.url)
+        main_box = list_item.get_child()
+
+        # Get the labels directly from the box
+        title_label = main_box.get_first_child()
+        url_label = title_label.get_next_sibling()
+
+        # Set the content
+        title_label.set_markup(f"<b>{GLib.markup_escape_text(bookmark_item.title)}</b>")
+        url_label.set_text(bookmark_item.url)
 
     def _on_search_changed(self, search_entry):
         if self._search_delay_id > 0:
