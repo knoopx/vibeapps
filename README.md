@@ -4,6 +4,12 @@ A collection of vibe-coded, keyboard-centric, minimalist GTK4/Adwaita applicatio
 
 ## Applications
 
+### Bookmarks
+
+A fast Firefox bookmarks browser with search functionality and keyboard navigation.
+
+![Bookmarks](bookmarks/screenshot.png)
+
 ### Chat
 
 A chat interface for OpenAI's API with markdown rendering support and streaming responses.
@@ -62,5 +68,9 @@ A minimal web browser shell for wrapping web applications in GTK windows.
 Add the input to your flake or run with nix:
 
 ```bash
+# Run specific apps
+nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#bookmarks
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#notes
+nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#launcher
+nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#chat
 ```
