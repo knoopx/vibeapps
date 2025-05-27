@@ -13,12 +13,9 @@
     dataset-viewer = pkgs.callPackage ./dataset-viewer/dataset-viewer.nix {};
     launcher = pkgs.callPackage ./launcher/launcher.nix {};
     md2html = pkgs.callPackage ./md2html/md2html.nix {};
-    mdx-editor = pkgs.callPackage ./mdx-editor/mdx-editor.nix {};
     music = pkgs.callPackage ./music/music.nix {};
     notes = pkgs.callPackage ./notes/notes.nix {};
     raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
-    reminder = pkgs.callPackage ./reminder/reminder.nix {};
-    webkit-shell = pkgs.callPackage ./webkit-shell/webkit-shell.nix {};
     nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
     scratchpad = pkgs.callPackage ./scratchpad/scratchpad.nix {};
   };
@@ -30,12 +27,9 @@
     "dataset-viewer"
     "launcher"
     "md2html"
-    "mdx-editor"
     "music"
     "notes"
     "raise-or-open-url"
-    "reminder"
-    "webkit-shell"
     "nix-packages"
     "scratchpad"
   ];
@@ -73,7 +67,7 @@ in {
       else enabledPackages;
 
     # Activation script to kill launcher when enabled
-    home.activation.killLauncher = lib.mkIf (cfg.enableAll || cfg.launcher.enable) (
+    home.activation.kill-launcher = lib.mkIf (cfg.enableAll || cfg.launcher.enable) (
       lib.hm.dag.entryAfter ["writeBoundary"] ''
         $DRY_RUN_CMD ${pkgs.procps}/bin/pkill -f launcher || true
       ''
