@@ -313,6 +313,24 @@ class MainWindow(Adw.ApplicationWindow):
                 self.note_content_view.enter_edit_mode()
             return
 
+        # Check if there are any filtered matches first
+        # If there are matches, select the first one instead of creating a new note
+        if self.filtered_notes:
+            # There are matching notes, select the first one
+            first_note = self.filtered_notes[0]
+            try:
+                idx = 0  # First filtered note is always at index 0
+                row = self.note_list.get_row_at_index(idx)
+                if row:
+                    self.note_list.select_row(row)
+                    # on_note_selected will be called, which sets self.current_note
+                    # and loads content. Then enter edit mode.
+                    self.note_content_view.enter_edit_mode()
+                    return
+            except (ValueError, AttributeError):
+                print(f"Could not select first filtered note: {first_note.relative_path}")
+
+        # No matches found, proceed with note creation
         # Ensure the filename has the correct note extension
         filename_with_ext = self.repository.ensure_note_extension(query)
 
@@ -322,53 +340,26 @@ class MainWindow(Adw.ApplicationWindow):
         else: # Simple filename, place in root of NOTES_DIR by default
             relative_path = filename_with_ext
 
-        # Generate a unique path if creating a new note and the name exists
-        # For existing notes, we want to find it, not generate a unique one.
-
+        # Check if note with exact path already exists
         existing_note = self.repository.get_note_by_relative_path(relative_path)
 
         if existing_note:
-            # Note exists, select it
-            # Find in filtered_notes to get the correct index for UI selection
+            # Note exists but wasn't filtered, this shouldn't happen
+            # Select it anyway
             try:
+                # Refresh to ensure it appears in filtered_notes
+                self.refresh_note_list()
                 idx = self.filtered_notes.index(existing_note)
                 row = self.note_list.get_row_at_index(idx)
                 if row:
                     self.note_list.select_row(row)
-                    # on_note_selected will be called, which sets self.current_note
-                    # and loads content. Then enter edit mode.
                     self.note_content_view.enter_edit_mode()
             except ValueError:
-                # Should not happen if refresh_note_list is up-to-date
-                # Fallback: refresh and try to select
-                self.refresh_note_list()
-                try:
-                    idx = self.filtered_notes.index(existing_note)
-                    row = self.note_list.get_row_at_index(idx)
-                    if row:
-                        self.note_list.select_row(row)
-                        self.note_content_view.enter_edit_mode()
-                except ValueError:
-                     print(f"Could not select existing note: {relative_path}")
-
+                print(f"Could not select existing note: {relative_path}")
         else:
             # Note does not exist, create it.
-            # The repository's create_note will handle actual file creation.
-            # Use generate_unique_relative_path from repository if there's a conflict,
-            # though get_note_by_relative_path should have caught exact matches.
-            # For now, assume `relative_path` is what the user wants, or Note.create handles uniqueness.
-            # Let's refine: if user types "foo" and "foo.md" exists, they mean "foo.md".
-            # If they type "foo" and "foo.md" does not exist, we create "foo.md".
-            # The `ensure_note_extension` and `get_note_by_relative_path` handle this.
-
             title_for_content = os.path.splitext(os.path.basename(relative_path))[0]
             initial_content = f"# {title_for_content}\\n\\n"
-
-            # The relative_path here is what the user typed (plus extension).
-            # If it truly needs to be unique beyond what get_note_by_relative_path checks,
-            # (e.g. case differences on case-insensitive FS), repo.create_note might fail.
-            # Or, we can use repo.generate_unique_relative_path if that's desired behavior.
-            # For now, let's assume `relative_path` is the target.
 
             new_note = self.repository.create_note(relative_path, initial_content)
 
@@ -378,8 +369,6 @@ class MainWindow(Adw.ApplicationWindow):
                 self.refresh_note_list()  # This will re-filter, re-sort, and re-select
 
                 # Ensure the new note is selected and edit mode is entered.
-                # refresh_note_list should handle selection.
-                # We need to find the row for the new_note to ensure edit mode is entered for it.
                 try:
                     idx = self.filtered_notes.index(new_note)
                     row = self.note_list.get_row_at_index(idx)
