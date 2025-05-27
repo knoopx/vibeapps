@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="net.knoopx.notes" path="/net/knoopx/notes/">
+    <key name="sidebar-visible" type="b">
+      <default>true</default>
+      <summary>Sidebar visibility</summary>
+      <description>Whether the sidebar is visible or hidden</description>
+    </key>
+  </schema>
+</schemalist>

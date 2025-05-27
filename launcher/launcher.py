@@ -242,6 +242,9 @@ class LauncherWindow(Adw.ApplicationWindow):
         return True
 
     def on_window_activate(self, controller):
+        # Refresh app list in background
+        GLib.idle_add(self.refresh_app_list)
+
         # Select all text and move caret to end
         self.search_entry.select_region(0, -1)
         self.search_entry.set_position(-1)
@@ -250,6 +253,31 @@ class LauncherWindow(Adw.ApplicationWindow):
         if first_visible:
             self.list_box.select_row(first_visible)
             self.scroll_to_row(first_visible)
+
+    def refresh_app_list(self):
+        """Refresh the app list in the background"""
+        # Clear existing apps
+        while True:
+            row = self.list_box.get_first_child()
+            if not row:
+                break
+            self.list_box.remove(row)
+
+        # Reload apps
+        self.load_apps()
+
+        # Re-apply current search filter
+        search_text = self.search_entry.get_text()
+        if search_text:
+            self.on_search_changed(self.search_entry)
+        else:
+            # Select first visible item
+            first_visible = self.find_next_visible_row(-1, 1)
+            if first_visible:
+                self.list_box.select_row(first_visible)
+                self.scroll_to_row(first_visible)
+
+        return False  # Don't repeat the idle callback
 
 
 class Launcher(Adw.Application):

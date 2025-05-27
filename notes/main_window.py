@@ -11,6 +11,9 @@ class MainWindow(Adw.ApplicationWindow):
         super().__init__(application=app, title="Markdown Notes")
         self.set_default_size(800, 600)
 
+        # Initialize dconf settings
+        self.settings = Gio.Settings.new("net.knoopx.notes")
+
         # Initialize Repository
         self.repository = Repository(notes_dir=NOTES_DIR, extension=EXT)
 
@@ -142,6 +145,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.header.pack_start(self.sidebar_button)
 
         self.refresh_note_list()
+
+        # Restore sidebar state from dconf
+        self.restore_sidebar_state()
 
     def setup_shortcuts(self):
         # Shortcut for toggling sidebar (Ctrl+B)
@@ -723,6 +729,16 @@ class MainWindow(Adw.ApplicationWindow):
         is_visible = self.split_view.get_show_sidebar()
         self.split_view.set_show_sidebar(not is_visible)
 
+        # Save the sidebar state to dconf
+        self.settings.set_boolean("sidebar-visible", self.split_view.get_show_sidebar())
+
+    def restore_sidebar_state(self):
+        """Restores the sidebar state from dconf on startup."""
+        if self.settings.get_boolean("sidebar-visible"):
+            self.split_view.set_show_sidebar(True)
+        else:
+            self.split_view.set_show_sidebar(False)
+
     def navigate_to_note(self, note_path):
         """Navigate to a note by its relative path"""
         self.entry.set_text(
@@ -736,21 +752,8 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if found_note:
             for i, note_obj_in_list in enumerate(self.filtered_notes):
-                if note_obj_in_list == found_note:  # Corrected variable name
+                if note_obj_in_list == found_note:
                     row = self.note_list.get_row_at_index(i)
                     if row:
-                        if self.note_list.get_selected_row() != row:
-                            self.note_list.select_row(row)
-                            self.on_note_selected(
-                                self.note_list, row
-                            )  # Ensure it's loaded
-                        # If you want to directly open it for editing:
-                        # self.note_content_view.enter_edit_mode()
+                        self.note_list.select_row(row)
                     break
-        else:
-            # If note_path was intended to be a new note, on_entry_activate handles creation
-            # This function is more for navigating to existing notes via external calls (e.g. CLI)
-            self.entry.set_text(
-                note_path
-            )  # Set the full path for creation if it doesn't exist
-            self.on_entry_activate(self.entry)
