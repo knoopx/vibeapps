@@ -12,7 +12,7 @@
 
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-xviAtPg383or+HJjtNEFmnWxfA8qP+UFl3i/2N9tUK8=";
+    outputHash = "sha256-70EwmwlqsKI5/RMxD54gyVW63NTNC5tKss9le3XDcuc=";
 
     buildPhase = ''
       bun add vite react react-dom @mdxeditor/editor
@@ -29,7 +29,7 @@
 
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-PE26fR3p4DpMTX9WI4pil5dvVM9nUIQGYQVbtt2M894=";
+    outputHash = "sha256-6UB5o1L2a3utfFwmDejzmyThRPrU/5OarPHxnT+em48=";
 
     buildPhase = ''
       cp -r ${deps} node_modules
