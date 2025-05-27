@@ -74,3 +74,8 @@ nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#notes
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#launcher
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#chat
 ```
+
+
+# Future Work
+
+* OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
