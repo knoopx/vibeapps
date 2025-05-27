@@ -255,32 +255,24 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             # Search entry has focus, close the window
             self.close()
             return True
-        elif keyval == Gdk.KEY_Up:
-            self._move_selection(-1)
-            return True
-        elif keyval == Gdk.KEY_Down:
-            self._move_selection(1)
+        elif keyval == Gdk.KEY_Up or keyval == Gdk.KEY_Down:
+            # Forward navigation to list view and give it focus
+            self._forward_navigation_to_list(keyval, keycode, state)
             return True
 
         return False
 
     def _on_window_key_pressed(self, controller, keyval, keycode, state):
         """Handle global keyboard navigation when not in search entry."""
-        # Debug output
-        key_name = Gdk.keyval_name(keyval)
         has_search_focus = self._search_entry.has_focus()
 
         # Only handle keys when search entry doesn't have focus
         if has_search_focus:
             return False
 
-        # Debug: Print key events when not in search
-        print(f"Window key pressed: {key_name} (keyval={keyval}), search_focus={has_search_focus}")
-
         if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
             # Activate selected item
             selected_item = self.get_selected_item()
-            print(f"Enter pressed, selected_item: {selected_item}")
             if selected_item:
                 self.on_item_activated(selected_item)
                 return True
@@ -292,11 +284,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             text_length = len(self._search_entry.get_text())
             self._search_entry.set_position(text_length)
             return True
-        elif keyval == Gdk.KEY_Up:
-            self._move_selection(-1)
-            return True
-        elif keyval == Gdk.KEY_Down:
-            self._move_selection(1)
+        elif keyval == Gdk.KEY_Up or keyval == Gdk.KEY_Down:
+            # Forward navigation to list view
+            self._forward_navigation_to_list(keyval, keycode, state)
             return True
 
         return False
@@ -309,30 +299,22 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Handle ListBox clicks - grab focus."""
         self._list_box.grab_focus()
 
-    def _move_selection(self, direction: int):
-        """Move selection up or down."""
+    def _forward_navigation_to_list(self, keyval, keycode, state):
+        """Forward keyboard navigation to the appropriate list view."""
         if self.use_list_view():
-            selected_pos = self._selection_model.get_selected()
-            new_pos = selected_pos + direction
-
-            if 0 <= new_pos < self._item_store.get_n_items():
-                self._selection_model.set_selected(new_pos)
-                self._scroll_to_selected_list_view()
+            # Give focus to ListView and let it handle navigation natively
+            self._list_view.grab_focus()
+            # Ensure we have a selection for navigation to work
+            if self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION and self._item_store.get_n_items() > 0:
+                self._selection_model.set_selected(0)
         else:
-            selected_row = self._list_box.get_selected_row()
-            if not selected_row:
-                # No selection, select first visible
-                first_visible = self._find_next_visible_row(0, 1)
+            # Give focus to ListBox and let it handle navigation natively
+            self._list_box.grab_focus()
+            # Ensure we have a selection for navigation to work
+            if not self._list_box.get_selected_row() and self._list_box.get_first_child():
+                first_visible = self._find_next_visible_row(-1, 1)
                 if first_visible:
                     self._list_box.select_row(first_visible)
-                    self._scroll_to_row(first_visible)
-                return
-
-            start_index = selected_row.get_index()
-            next_row = self._find_next_visible_row(start_index, direction)
-            if next_row:
-                self._list_box.select_row(next_row)
-                self._scroll_to_row(next_row)
 
     def _find_next_visible_row(self, start_index: int, direction: int):
         """Find next visible row in ListBox (for filtering)."""
@@ -346,33 +328,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             index += direction
 
         return None
-
-    def _scroll_to_selected_list_view(self):
-        """Scroll ListView to show selected item."""
-        selected_pos = self._selection_model.get_selected()
-        if selected_pos != Gtk.INVALID_LIST_POSITION:
-            GLib.idle_add(
-                lambda: self._list_view.scroll_to(
-                    selected_pos, Gtk.ListScrollFlags.FOCUS, None
-                )
-            )
-
-    def _scroll_to_row(self, row):
-        """Scroll ListBox to show specific row."""
-        adj = self._scrolled_window.get_vadjustment()
-        if not adj:
-            return
-
-        row_height = row.get_allocated_height()
-        row_y = row.get_allocation().y
-        visible_height = self._scrolled_window.get_allocated_height()
-        visible_top = adj.get_value()
-        visible_bottom = visible_top + visible_height
-
-        if row_y < visible_top or (row_y + row_height) > visible_bottom:
-            target = row_y - (visible_height - row_height) / 2
-            target = max(0, min(target, adj.get_upper() - visible_height))
-            adj.set_value(target)
 
     def _on_selection_changed(self, selection_model, position, n_items):
         """Handle ListView selection changes."""
@@ -413,16 +368,14 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._is_loading = False
         self._content_stack.set_visible_child_name("results")
 
-        # Auto-select first item
+        # Auto-select first item - GTK will handle scrolling automatically
         if self.use_list_view():
             if self._item_store.get_n_items() > 0:
                 self._selection_model.set_selected(0)
-                self._scroll_to_selected_list_view()
         else:
             first_visible = self._find_next_visible_row(-1, 1)
             if first_visible:
                 self._list_box.select_row(first_visible)
-                self._scroll_to_row(first_visible)
 
     def _show_empty(self, title: Optional[str] = None, description: Optional[str] = None):
         """Show empty state."""
