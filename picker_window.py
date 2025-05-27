@@ -112,6 +112,13 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             )
             self._list_view.set_vexpand(True)
             self._list_view.set_can_focus(True)
+            # Enable single-click activation for ListView
+            self._list_view.set_single_click_activate(True)
+
+            # Add click controller to grab focus when clicked
+            click_controller = Gtk.GestureClick()
+            click_controller.connect("pressed", self._on_list_view_clicked)
+            self._list_view.add_controller(click_controller)
 
             scrolled_window.set_child(self._list_view)
             self._scrolled_window = scrolled_window
@@ -120,6 +127,12 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             self._list_box = Gtk.ListBox()
             self._list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
             self._list_box.set_activate_on_single_click(True)
+            self._list_box.set_can_focus(True)
+
+            # Add click controller to grab focus when clicked
+            click_controller = Gtk.GestureClick()
+            click_controller.connect("pressed", self._on_list_box_clicked)
+            self._list_box.add_controller(click_controller)
 
             scrolled_window.set_child(self._list_box)
             self._scrolled_window = scrolled_window
@@ -163,14 +176,21 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._search_entry.connect("search-changed", self._on_search_changed)
         self._search_entry.connect("activate", self._on_search_activated)
 
-        # Keyboard navigation
-        key_controller = Gtk.EventControllerKey()
-        key_controller.connect("key-pressed", self._on_key_pressed)
-        self._search_entry.add_controller(key_controller)
+        # Keyboard navigation for search entry
+        search_key_controller = Gtk.EventControllerKey()
+        search_key_controller.connect("key-pressed", self._on_search_key_pressed)
+        self._search_entry.add_controller(search_key_controller)
+
+        # Global keyboard navigation for the window
+        window_key_controller = Gtk.EventControllerKey()
+        window_key_controller.connect("key-pressed", self._on_window_key_pressed)
+        self.add_controller(window_key_controller)
 
         # List activation
         if self.use_list_view():
-            # ListView doesn't have row-activated signal, handle via selection change
+            # ListView activation via keybinding or click
+            self._list_view.connect("activate", self._on_list_view_activate)
+            # Also handle selection changes
             self._selection_model.connect("selection-changed", self._on_selection_changed)
         else:
             self._list_box.connect("row-activated", self._on_row_activated)
@@ -229,8 +249,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             if selected_row:
                 self.on_item_activated(self.get_row_item(selected_row))
 
-    def _on_key_pressed(self, controller, keyval, keycode, state):
-        """Handle keyboard navigation."""
+    def _on_search_key_pressed(self, controller, keyval, keycode, state):
+        """Handle keyboard navigation in search entry."""
         if keyval == Gdk.KEY_Escape:
             self.on_escape_pressed()
             return True
@@ -242,6 +262,46 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             return True
 
         return False
+
+    def _on_window_key_pressed(self, controller, keyval, keycode, state):
+        """Handle global keyboard navigation when not in search entry."""
+        # Debug output
+        key_name = Gdk.keyval_name(keyval)
+        has_search_focus = self._search_entry.has_focus()
+
+        # Only handle keys when search entry doesn't have focus
+        if has_search_focus:
+            return False
+
+        # Debug: Print key events when not in search
+        print(f"Window key pressed: {key_name} (keyval={keyval}), search_focus={has_search_focus}")
+
+        if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
+            # Activate selected item
+            selected_item = self.get_selected_item()
+            print(f"Enter pressed, selected_item: {selected_item}")
+            if selected_item:
+                self.on_item_activated(selected_item)
+                return True
+        elif keyval == Gdk.KEY_Escape:
+            self.on_escape_pressed()
+            return True
+        elif keyval == Gdk.KEY_Up:
+            self._move_selection(-1)
+            return True
+        elif keyval == Gdk.KEY_Down:
+            self._move_selection(1)
+            return True
+
+        return False
+
+    def _on_list_view_clicked(self, gesture, n_press, x, y):
+        """Handle ListView clicks - grab focus and update selection."""
+        self._list_view.grab_focus()
+
+    def _on_list_box_clicked(self, gesture, n_press, x, y):
+        """Handle ListBox clicks - grab focus."""
+        self._list_box.grab_focus()
 
     def _move_selection(self, direction: int):
         """Move selection up or down."""
@@ -312,6 +372,12 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Handle ListView selection changes."""
         # Override in subclass if needed
         pass
+
+    def _on_list_view_activate(self, list_view, position):
+        """Handle ListView activation (Enter key or double-click)."""
+        item = self._item_store.get_item(position)
+        if item:
+            self.on_item_activated(item)
 
     def _on_row_activated(self, list_box, row):
         """Handle ListBox row activation."""
