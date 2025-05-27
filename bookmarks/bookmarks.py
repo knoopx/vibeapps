@@ -5,6 +5,8 @@ import threading
 import os
 import getpass
 import sqlite3
+import shutil
+import tempfile
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -176,27 +178,45 @@ class BookmarksWindow(PickerWindow):
             if not profile_path:
                 raise RuntimeError("Could not find Firefox profile directory")
 
-            # Query bookmarks directly from SQLite database
+            # Query bookmarks from a temporary copy of the SQLite database
             db_path = os.path.join(profile_path, "places.sqlite")
             if not os.path.exists(db_path):
                 raise RuntimeError(f"places.sqlite not found at {db_path}")
 
-            # Connect to SQLite database and query bookmarks with dates
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            # Create a temporary copy of the database to avoid lock issues
+            temp_db = None
+            try:
+                # Create temporary file with .sqlite extension for better compatibility
+                temp_fd, temp_db = tempfile.mkstemp(suffix='.sqlite', prefix='bookmarks_')
+                os.close(temp_fd)  # Close the file descriptor, we only need the path
 
-            # Query to get bookmarks with their added dates, sorted by most recent
-            query = """
-            SELECT p.title, p.url, b.dateAdded
-            FROM moz_places p
-            JOIN moz_bookmarks b ON p.id = b.fk
-            WHERE b.type = 1 AND p.url IS NOT NULL AND p.title IS NOT NULL
-            ORDER BY b.dateAdded DESC
-            """
+                # Copy the database file
+                shutil.copy2(db_path, temp_db)
 
-            cursor.execute(query)
-            results = cursor.fetchall()
-            conn.close()
+                # Connect to the temporary database copy
+                conn = sqlite3.connect(temp_db)
+                cursor = conn.cursor()
+
+                # Query to get bookmarks with their added dates, sorted by most recent
+                query = """
+                SELECT p.title, p.url, b.dateAdded
+                FROM moz_places p
+                JOIN moz_bookmarks b ON p.id = b.fk
+                WHERE b.type = 1 AND p.url IS NOT NULL AND p.title IS NOT NULL
+                ORDER BY b.dateAdded DESC
+                """
+
+                cursor.execute(query)
+                results = cursor.fetchall()
+                conn.close()
+
+            finally:
+                # Clean up the temporary file
+                if temp_db and os.path.exists(temp_db):
+                    try:
+                        os.unlink(temp_db)
+                    except OSError:
+                        pass  # Ignore cleanup errors
 
             # Parse bookmarks
             bookmarks = []
