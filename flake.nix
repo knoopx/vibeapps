@@ -4,10 +4,13 @@
   };
 
   outputs = {nixpkgs, ...}: let
-    system = "x86_64-linux";
-    pkgs = nixpkgs.legacyPackages.${system};
-  in {
-    packages.x86_64-linux = {
+    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+
+    forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+
+    packageSet = system: let
+      pkgs = nixpkgs.legacyPackages.${system};
+    in {
       bookmarks = pkgs.callPackage ./bookmarks/bookmarks.nix {};
       chat = pkgs.callPackage ./chat/chat.nix {};
       dataset-viewer = pkgs.callPackage ./dataset-viewer/dataset-viewer.nix {};
@@ -23,5 +26,9 @@
       nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
       scratchpad = pkgs.callPackage ./scratchpad/scratchpad.nix {};
     };
+  in {
+    packages = forAllSystems packageSet;
+
+    homeManagerModules.default = import ./hm.nix;
   };
 }
