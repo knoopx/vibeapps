@@ -252,7 +252,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def _on_search_key_pressed(self, controller, keyval, keycode, state):
         """Handle keyboard navigation in search entry."""
         if keyval == Gdk.KEY_Escape:
-            self.on_escape_pressed()
+            # Search entry has focus, close the window
+            self.close()
             return True
         elif keyval == Gdk.KEY_Up:
             self._move_selection(-1)
@@ -284,7 +285,12 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
                 self.on_item_activated(selected_item)
                 return True
         elif keyval == Gdk.KEY_Escape:
-            self.on_escape_pressed()
+            # Search entry doesn't have focus, grab focus and select all text
+            self._search_entry.grab_focus()
+            self._search_entry.select_region(0, -1)  # Select all text
+            # Position cursor at the end
+            text_length = len(self._search_entry.get_text())
+            self._search_entry.set_position(text_length)
             return True
         elif keyval == Gdk.KEY_Up:
             self._move_selection(-1)
@@ -503,7 +509,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         pass
 
     def on_escape_pressed(self):
-        """Handle Escape key. Default: close window."""
+        """Handle Escape key. Default behavior: close window."""
         self.close()
 
     def on_close_request(self) -> bool:
