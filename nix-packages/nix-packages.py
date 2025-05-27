@@ -4,11 +4,12 @@ import gi
 import json
 import requests
 import threading
+from typing import Optional
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw, GLib, GObject, Gdk
+from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Gio
 from picker_window import PickerWindow, PickerItem
 
 APP_ID = "net.knoopx.nix-packages"
@@ -131,6 +132,50 @@ class NixPackagesWindow(PickerWindow):
 
     def get_empty_description(self):
         return "Type your query in the search bar above."
+
+    # Context menu support
+    def get_context_menu_actions(self) -> dict:
+        """Return actions for package context menu."""
+        return {
+            "open_homepage": "on_open_homepage_action",
+            "copy_name": "on_copy_name_action",
+            "copy_description": "on_copy_description_action"
+        }
+
+    def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
+        """Return context menu model for packages."""
+        if not item:
+            return None
+
+        menu_model = Gio.Menu.new()
+
+        if item.homepage:
+            menu_model.append("Open Homepage", "context.open_homepage")
+
+        menu_model.append("Copy Package Name", "context.copy_name")
+        menu_model.append("Copy Description", "context.copy_description")
+
+        return menu_model
+
+    def on_open_homepage_action(self, action, param):
+        """Open package homepage."""
+        selected_item = self.get_selected_item()
+        if selected_item and selected_item.homepage:
+            Gtk.show_uri(self, selected_item.homepage, Gdk.CURRENT_TIME)
+
+    def on_copy_name_action(self, action, param):
+        """Copy package name to clipboard."""
+        selected_item = self.get_selected_item()
+        if selected_item:
+            clipboard = self.get_clipboard()
+            clipboard.set_text(selected_item.name)
+
+    def on_copy_description_action(self, action, param):
+        """Copy package description to clipboard."""
+        selected_item = self.get_selected_item()
+        if selected_item:
+            clipboard = self.get_clipboard()
+            clipboard.set_text(selected_item.description)
 
     def _perform_search_request(self, query):
         """Perform the actual search request in a separate thread."""

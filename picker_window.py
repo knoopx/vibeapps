@@ -43,6 +43,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
                  search_placeholder: str = "Search...",
                  window_size: tuple = (400, 800),
                  search_delay_ms: int = 300,
+                 enable_context_menu: bool = True,
+                 context_menu_shortcut: str = "<Control>o",
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -50,6 +52,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._title = title
         self._search_placeholder = search_placeholder
         self._search_delay_ms = search_delay_ms
+        self._enable_context_menu = enable_context_menu
+        self._context_menu_shortcut = context_menu_shortcut
 
         # Internal state
         self._item_store = Gio.ListStore.new(self.get_item_type())
@@ -63,6 +67,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
         self._setup_ui()
         self._setup_signals()
+
+        # Setup context menu actions if enabled
+        if self._enable_context_menu:
+            self._setup_context_menu_actions()
 
         # Initialize data
         self.load_initial_data()
@@ -181,6 +189,17 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         search_key_controller.connect("key-pressed", self._on_search_key_pressed)
         self._search_entry.add_controller(search_key_controller)
 
+        # Context menu shortcut for search entry (if enabled)
+        if self._enable_context_menu:
+            search_shortcut_controller = Gtk.ShortcutController.new()
+            search_shortcut_controller.set_scope(Gtk.ShortcutScope.MANAGED)
+            context_menu_shortcut = Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string(self._context_menu_shortcut),
+                Gtk.CallbackAction.new(self._show_context_menu_action_callback),
+            )
+            search_shortcut_controller.add_shortcut(context_menu_shortcut)
+            self._search_entry.add_controller(search_shortcut_controller)
+
         # Global keyboard navigation for the window
         window_key_controller = Gtk.EventControllerKey()
         window_key_controller.connect("key-pressed", self._on_window_key_pressed)
@@ -198,6 +217,104 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         # Window signals
         self.connect("close-request", self._on_close_request)
         self.connect("map", self._on_window_map)
+
+    def _setup_context_menu_actions(self):
+        """Setup context menu actions. Subclasses can override to add custom actions."""
+        # Create action group for context menu actions
+        self._context_action_group = Gio.SimpleActionGroup()
+
+        # Add default context menu actions
+        for action_name, method_name in self.get_context_menu_actions().items():
+            action = Gio.SimpleAction.new(action_name, None)
+            if hasattr(self, method_name):
+                action.connect("activate", getattr(self, method_name))
+                self._context_action_group.add_action(action)
+
+        # Insert action group with "context" prefix
+        self.insert_action_group("context", self._context_action_group)
+
+    def _show_context_menu_action_callback(self, widget, args):
+        """Callback wrapper for context menu shortcut."""
+        self.show_context_menu()  # For keyboard, no specific anchor
+        return True
+
+    def show_context_menu(self, anchor_widget: Optional[Gtk.Widget] = None): # Added anchor_widget
+        """Show context menu for the currently selected item."""
+        selected_item = self.get_selected_item()
+        if not selected_item:
+            return
+
+        # Get menu model from subclass
+        menu_model = self.get_context_menu_model(selected_item)
+        if not menu_model:
+            return
+
+        # Create and show popover menu
+        popover_menu = Gtk.PopoverMenu.new_from_model(menu_model)
+
+        # Determine the widget to attach the popover to
+        final_anchor_widget = None
+        if anchor_widget:  # Provided by right-click handler for specific item
+            final_anchor_widget = anchor_widget
+        elif self.use_list_view():
+            # Keyboard invocation for ListView: parent to the ListView itself.
+            # Popover might not be perfectly positioned relative to the selected item without more complex logic.
+            final_anchor_widget = self._list_view
+        else:  # ListBox (either right-click not passing anchor, or keyboard)
+            selected_row = self._list_box.get_selected_row()
+            if selected_row:
+                final_anchor_widget = selected_row
+            else:  # Fallback for ListBox
+                final_anchor_widget = self._list_box
+
+        # Ensure we have a Gtk.Widget to parent to, fallback to self (the window) if absolutely necessary
+        if not isinstance(final_anchor_widget, Gtk.Widget):
+             final_anchor_widget = self
+
+        popover_menu.set_parent(final_anchor_widget)
+        popover_menu.popup()
+
+    def _setup_context_menu_gesture(self, widget, item, list_item=None):
+        """Setup right-click gesture for context menu on list items."""
+        if not self._enable_context_menu:
+            return
+
+        context_menu_gesture = Gtk.GestureClick.new()
+        context_menu_gesture.set_button(Gdk.BUTTON_SECONDARY)  # Right mouse button
+        context_menu_gesture.connect("pressed", self._on_item_right_click, item, list_item)
+        widget.add_controller(context_menu_gesture)
+
+    def _on_item_right_click(self, gesture, n_press, x, y, item, list_item=None):
+        """Handle right-click on list items."""
+        if n_press == 1:  # Ensure it's a single click
+            # Select the item first
+            if self.use_list_view():
+                if list_item:  # list_item is available if gesture was on a ListItem's child
+                    position = list_item.get_position()
+                    # Ensure the item is selected
+                    if self._selection_model.get_selected() != position:
+                        self._selection_model.set_selected(position)
+                # If selection is still not right, consider selecting based on 'item' if robustly comparable
+            else:  # ListBox
+                # For ListBox, the gesture is on a child of the ListBoxRow.
+                # We need to find the ListBoxRow to select it.
+                row_widget_ancestor = gesture.get_widget()
+                while row_widget_ancestor and not isinstance(row_widget_ancestor, Gtk.ListBoxRow):
+                    row_widget_ancestor = row_widget_ancestor.get_parent()
+                if row_widget_ancestor and isinstance(row_widget_ancestor, Gtk.ListBoxRow):
+                    if self._list_box.get_selected_row() != row_widget_ancestor:
+                        self._list_box.select_row(row_widget_ancestor)
+
+            # Determine the anchor for the menu
+            anchor_for_menu = gesture.get_widget() # This is the direct widget that received the click
+            if not self.use_list_view():  # It's a ListBox, try to anchor to the ListBoxRow
+                row_candidate = gesture.get_widget()
+                while row_candidate and not isinstance(row_candidate, Gtk.ListBoxRow):
+                    row_candidate = row_candidate.get_parent()
+                if row_candidate: # If a ListBoxRow is found, use it as anchor
+                    anchor_for_menu = row_candidate
+
+            self.show_context_menu(anchor_widget=anchor_for_menu)
 
     def _on_window_map(self, window):
         """Called when window is mapped (shown)."""
@@ -288,8 +405,13 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             # Forward navigation to list view
             self._forward_navigation_to_list(keyval, keycode, state)
             return True
+        elif self._enable_context_menu and keyval == Gdk.KEY_Menu:
+            # Handle context menu key
+            self.show_context_menu()
+            return True
 
-        return False
+        # Allow subclasses to handle additional keys
+        return self.on_additional_key_pressed(keyval, keycode, state)
 
     def _on_list_view_clicked(self, gesture, n_press, x, y):
         """Handle ListView clicks - grab focus and update selection."""
@@ -356,6 +478,11 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Bind data to ListView item (delegate to subclass)."""
         item = list_item.get_item()
         self.bind_list_item(list_item, item)
+
+        # Setup context menu gesture for ListView items
+        child_widget = list_item.get_child()
+        if child_widget and item:
+            self._setup_context_menu_gesture(child_widget, item, list_item)
 
     # State management methods
     def _show_loading(self):
@@ -456,6 +583,35 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Handle search query changes."""
         pass
 
+    # Abstract methods for context menu support
+    @abstractmethod
+    def get_context_menu_actions(self) -> dict:
+        """
+        Return a dictionary mapping action names to method names for context menu.
+
+        Example:
+        {
+            "open_item": "on_open_item_action",
+            "delete_item": "on_delete_item_action",
+            "rename_item": "on_rename_item_action"
+        }
+        """
+        pass
+
+    @abstractmethod
+    def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
+        """
+        Return a Gio.Menu for the context menu of the given item.
+        Return None if no context menu should be shown.
+
+        Example:
+        menu_model = Gio.Menu.new()
+        menu_model.append("Open", "context.open_item")
+        menu_model.append("Delete", "context.delete_item")
+        return menu_model
+        """
+        pass
+
     # Optional methods that subclasses can override
     def on_search_cleared(self):
         """Called when search is cleared. Default: do nothing."""
@@ -506,3 +662,18 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def create_row_widget(self, item):
         """Create widget for a ListBox row. Override if using ListBox."""
         return Gtk.Label(label=str(item))
+
+    # Optional methods that subclasses can override
+    def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
+        """
+        Handle additional key presses not covered by default navigation.
+        Return True if the key was handled, False otherwise.
+        """
+        return False
+
+    def _items_equal(self, item1, item2):
+        """
+        Compare two items for equality. Subclasses can override this for better comparison.
+        Default implementation uses object identity.
+        """
+        return item1 == item2

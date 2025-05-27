@@ -12,7 +12,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
 
-from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Pango
+from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Pango, Gio
+from typing import Optional
 from picker_window import PickerWindow, PickerItem
 
 APP_ID = "net.knoopx.bookmarks"
@@ -135,6 +136,51 @@ class BookmarksWindow(PickerWindow):
         # Set the content
         title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
         url_label.set_text(item.url)
+
+    # Context menu support
+    def get_context_menu_actions(self) -> dict:
+        """Return actions for bookmark context menu."""
+        return {
+            "open_bookmark": "on_open_bookmark_action",
+            "copy_url": "on_copy_url_action",
+            "copy_title": "on_copy_title_action"
+        }
+
+    def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
+        """Return context menu model for bookmarks."""
+        if not item:
+            return None
+
+        menu_model = Gio.Menu.new()
+        menu_model.append("Open Bookmark", "context.open_bookmark")
+        menu_model.append("Copy URL", "context.copy_url")
+        menu_model.append("Copy Title", "context.copy_title")
+
+        return menu_model
+
+    def on_open_bookmark_action(self, action, param):
+        """Open bookmark URL."""
+        selected_item = self.get_selected_item()
+        if selected_item and selected_item.url:
+            Gtk.show_uri(self, selected_item.url, Gdk.CURRENT_TIME)
+
+    def on_copy_url_action(self, action, param):
+        """Copy bookmark URL to clipboard."""
+        selected_item = self.get_selected_item()
+        if selected_item and hasattr(selected_item, 'url'):
+            clipboard = self.get_clipboard()
+            value = GObject.Value(str, selected_item.url)
+            provider = Gdk.ContentProvider.new_for_value(value)
+            clipboard.set_content(provider)
+
+    def on_copy_title_action(self, action, param):
+        """Copy bookmark title to clipboard."""
+        selected_item = self.get_selected_item()
+        if selected_item and hasattr(selected_item, 'title'):
+            clipboard = self.get_clipboard()
+            value = GObject.Value(str, selected_item.title)
+            provider = Gdk.ContentProvider.new_for_value(value)
+            clipboard.set_content(provider)
 
     # Optional overrides
     def get_empty_icon(self):
