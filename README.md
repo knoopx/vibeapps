@@ -180,3 +180,9 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 # Future Work
 
 * OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
+* Bookmarks v2:
+    * uses its own sqlite database to store bookmarks instead of firefox
+    * built-in bookmarking (just paste link in search entry)
+      * scrapes websites and summarizes it using openai
+      * screenshots it (using firefox)
+      * shows notification after scraping
