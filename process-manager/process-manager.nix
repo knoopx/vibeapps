@@ -45,7 +45,7 @@ in
         name = "process-manager";
         desktopName = "Process Manager";
         exec = lib.getExe pkg;
-        icon = "system-monitor-symbolic";
+        icon = "find-location-symbolic";
       })
     ];
   }

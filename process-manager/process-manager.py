@@ -293,7 +293,7 @@ class ProcessManagerWindow(PickerWindow):
 
     # Optional overrides
     def get_empty_icon(self):
-        return "system-monitor-symbolic"
+        return "find-location-symbolic"
 
     def get_loading_icon(self):
         return "view-refresh-symbolic"
