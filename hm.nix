@@ -15,6 +15,7 @@
     md2html = pkgs.callPackage ./md2html/md2html.nix {};
     music = pkgs.callPackage ./music/music.nix {};
     notes = pkgs.callPackage ./notes/notes.nix {};
+    process-manager = pkgs.callPackage ./process-manager/process-manager.nix {};
     raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
     nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
     scratchpad = pkgs.callPackage ./scratchpad/scratchpad.nix {};
@@ -29,6 +30,7 @@
     "md2html"
     "music"
     "notes"
+    "process-manager"
     "raise-or-open-url"
     "nix-packages"
     "scratchpad"
