@@ -213,9 +213,10 @@ class ProcessManagerWindow(PickerWindow):
 
         # Command line
         cmd_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        cmd_label.set_ellipsize(Pango.EllipsizeMode.END)
+        cmd_label.set_ellipsize(Pango.EllipsizeMode.START)
         cmd_label.add_css_class("caption")
         cmd_label.set_opacity(0.7)
+
 
         # User and status info
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -277,18 +278,18 @@ class ProcessManagerWindow(PickerWindow):
 
         # Set process information
         name_label.set_text(item.name)
-        pid_label.set_text(f"PID {item.pid}")
+        pid_label.set_text(str(item.pid))
 
         cmd_text = item.cmdline if item.cmdline and item.cmdline != item.name else ""
         cmd_label.set_text(cmd_text)
         cmd_label.set_visible(bool(cmd_text))
 
-        user_label.set_text(f"User: {item.username}")
-        status_label.set_text(f"Status: {item.status}")
+        user_label.set_text(item.username)
+        status_label.set_text(item.status)
 
         # Set resource usage
-        cpu_label.set_text(f"CPU: {item.cpu_percent:.1f}%")
-        mem_label.set_text(f"RAM: {item.get_memory_mb():.0f}MB")
+        cpu_label.set_text(f"{item.cpu_percent:.1f}%")
+        mem_label.set_text(f"{item.get_memory_mb():.0f}MB")
 
     # Optional overrides
     def get_empty_icon(self):
@@ -326,10 +327,7 @@ class ProcessManagerWindow(PickerWindow):
         if item.pid != current_pid:
             menu_model.append("Terminate Process (SIGTERM)", "context.terminate_process")
             menu_model.append("Kill Process (SIGKILL)", "context.kill_process")
-            menu_model.append("", None)  # separator
 
-        menu_model.append("Show Details", "context.show_details")
-        menu_model.append("", None)  # separator
         menu_model.append("Copy PID", "context.copy_pid")
         menu_model.append("Copy Command", "context.copy_command")
 
