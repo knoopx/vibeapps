@@ -19,6 +19,7 @@
       mdx-editor = pkgs.callPackage ./mdx-editor/mdx-editor.nix {};
       music = pkgs.callPackage ./music/music.nix {};
       notes = pkgs.callPackage ./notes/notes.nix {};
+      process-manager = pkgs.callPackage ./process-manager/process-manager.nix {};
       raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
       reminder = pkgs.callPackage ./reminder/reminder.nix {};
       webkit-shell = pkgs.callPackage ./webkit-shell/webkit-shell.nix {};

@@ -9,6 +9,7 @@
       mkdir -p $out
       cp ${./bookmarks.py} $out/bookmarks.py
       cp ${../picker_window.py} $out/picker_window.py
+      cp ${../context_menu_window.py} $out/context_menu_window.py
     '';
     pyproject = false;
 
@@ -35,6 +36,7 @@
     buildPhase = ''
       mkdir -p $out/bin $out/lib/python
       cp $src/picker_window.py $out/lib/python/
+      cp $src/context_menu_window.py $out/lib/python/
       cp $src/bookmarks.py $out/bin/bookmarks
       chmod +x $out/bin/bookmarks
     '';

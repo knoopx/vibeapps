@@ -4,7 +4,7 @@
   ...
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
-    name = "nix-packages";
+    name = "process-manager";
     src = ./.;
     pyproject = false;
 
@@ -19,33 +19,33 @@
 
     buildPhase = ''
       mkdir -p $out/bin $out/lib/python
-      cp nix-packages.py $out/bin/nix-packages
+      cp process-manager.py $out/bin/process-manager
       cp ${../picker_window.py} $out/lib/python/picker_window.py
       cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
-      chmod +x $out/bin/nix-packages
+      chmod +x $out/bin/process-manager
     '';
 
     preFixup = ''
       gappsWrapperArgs+=(
         --prefix PYTHONPATH : "$out/lib/python:${pkgs.python3.withPackages (p: [
         p.pygobject3
-        p.requests
+        p.psutil
       ])}/${pkgs.python3.sitePackages}"
       )
     '';
 
-    meta.mainProgram = "nix-packages";
+    meta.mainProgram = "process-manager";
   };
 in
   pkgs.symlinkJoin {
-    name = "nix-packages";
+    name = "process-manager";
     paths = [
       pkg
       (pkgs.makeDesktopItem {
-        name = "nix-packages";
-        desktopName = "Nix Packages";
+        name = "process-manager";
+        desktopName = "Process Manager";
         exec = lib.getExe pkg;
-        icon = "package-x-generic-symbolic";
+        icon = "system-monitor-symbolic";
       })
     ];
   }

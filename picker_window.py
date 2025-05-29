@@ -238,41 +238,53 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self.show_context_menu()  # For keyboard, no specific anchor
         return True
 
-    def show_context_menu(self, anchor_widget: Optional[Gtk.Widget] = None): # Added anchor_widget
-        """Show context menu for the currently selected item."""
+    def show_context_menu(self, anchor_widget: Optional[Gtk.Widget] = None):
+        """Show context menu for the currently selected item using a picker window."""
         selected_item = self.get_selected_item()
         if not selected_item:
             return
 
-        # Get menu model from subclass
+        # Get menu model from subclass to extract actions
         menu_model = self.get_context_menu_model(selected_item)
         if not menu_model:
             return
 
-        # Create and show popover menu
-        popover_menu = Gtk.PopoverMenu.new_from_model(menu_model)
+        # Convert Gio.Menu to ContextMenuAction list
+        from context_menu_window import ContextMenuWindow, ContextMenuAction
 
-        # Determine the widget to attach the popover to
-        final_anchor_widget = None
-        if anchor_widget:  # Provided by right-click handler for specific item
-            final_anchor_widget = anchor_widget
-        elif self.use_list_view():
-            # Keyboard invocation for ListView: parent to the ListView itself.
-            # Popover might not be perfectly positioned relative to the selected item without more complex logic.
-            final_anchor_widget = self._list_view
-        else:  # ListBox (either right-click not passing anchor, or keyboard)
-            selected_row = self._list_box.get_selected_row()
-            if selected_row:
-                final_anchor_widget = selected_row
-            else:  # Fallback for ListBox
-                final_anchor_widget = self._list_box
+        actions = []
 
-        # Ensure we have a Gtk.Widget to parent to, fallback to self (the window) if absolutely necessary
-        if not isinstance(final_anchor_widget, Gtk.Widget):
-             final_anchor_widget = self
+        # Extract actions from menu model
+        for i in range(menu_model.get_n_items()):
+            label = menu_model.get_item_attribute_value(i, "label", None)
+            action = menu_model.get_item_attribute_value(i, "action", None)
 
-        popover_menu.set_parent(final_anchor_widget)
-        popover_menu.popup()
+            if label and action:
+                label_str = label.get_string()
+                action_str = action.get_string()
+
+                # Skip separators (empty labels)
+                if not label_str.strip():
+                    continue
+
+                # Create callback for the action
+                def make_callback(action_name):
+                    def callback():
+                        # Find and activate the action in our context action group
+                        action_name_clean = action_name.replace("context.", "")
+                        if hasattr(self, '_context_action_group') and self._context_action_group.has_action(action_name_clean):
+                            self._context_action_group.activate_action(action_name_clean, None)
+                    return callback
+
+                action_obj = ContextMenuAction(label_str, action_str, make_callback(action_str))
+                actions.append(action_obj)
+
+        if not actions:
+            return
+
+        # Create and show context menu window
+        context_menu = ContextMenuWindow(self, actions)
+        context_menu.present()
 
     def _setup_context_menu_gesture(self, widget, item, list_item=None):
         """Setup right-click gesture for context menu on list items."""
@@ -383,7 +395,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Handle global keyboard navigation when not in search entry."""
         has_search_focus = self._search_entry.has_focus()
 
-        # Only handle keys when search entry doesn't have focus
+        # Only handle navigation keys when search entry doesn't have focus
         if has_search_focus:
             return False
 
@@ -404,10 +416,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         elif keyval == Gdk.KEY_Up or keyval == Gdk.KEY_Down:
             # Forward navigation to list view
             self._forward_navigation_to_list(keyval, keycode, state)
-            return True
-        elif self._enable_context_menu and keyval == Gdk.KEY_Menu:
-            # Handle context menu key
-            self.show_context_menu()
             return True
 
         # Allow subclasses to handle additional keys
