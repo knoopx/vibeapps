@@ -18,9 +18,9 @@ class AppHistory:
             "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
         )
         self.data_file = Path(data_home) / "launcher" / "history.json"
-        self.launch_counts = self._load_history()
+        self.term_app_launches = self._load_data()
 
-    def _load_history(self):
+    def _load_data(self):
         try:
             self.data_file.parent.mkdir(parents=True, exist_ok=True)
             if self.data_file.exists():
@@ -30,19 +30,72 @@ class AppHistory:
             pass
         return {}
 
-    def _save_history(self):
+    def _save_data(self):
         try:
+            self.data_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.data_file, "w") as f:
-                json.dump(self.launch_counts, f)
+                json.dump(self.term_app_launches, f, indent=2)
         except Exception:
             pass
 
-    def record_launch(self, app_id):
-        self.launch_counts[app_id] = self.launch_counts.get(app_id, 0) + 1
-        self._save_history()
+    def record_launch(self, app_id, search_term):
+        # Only record launches with search terms
+        if not search_term.strip():
+            return
 
-    def get_launch_count(self, app_id):
-        return self.launch_counts.get(app_id, 0)
+        normalized_term = search_term.strip().lower()
+
+        # Initialize search term entry if it doesn't exist
+        if normalized_term not in self.term_app_launches:
+            self.term_app_launches[normalized_term] = {}
+
+        # Record the search_term -> app_id -> count mapping
+        self.term_app_launches[normalized_term][app_id] = (
+            self.term_app_launches[normalized_term].get(app_id, 0) + 1
+        )
+
+        # Save all data in one operation
+        self._save_data()
+
+    def get_total_launch_count(self, app_id):
+        """Get total launch count for an app across all search terms"""
+        total = 0
+        for search_term_data in self.term_app_launches.values():
+            total += search_term_data.get(app_id, 0)
+        return total
+
+    def get_search_term_launch_count(self, app_id, search_term):
+        """Get launch count for an app with a specific search term"""
+        if not search_term.strip():
+            return 0
+
+        normalized_term = search_term.strip().lower()
+        if normalized_term not in self.term_app_launches:
+            return 0
+
+        return self.term_app_launches[normalized_term].get(app_id, 0)
+
+    def get_search_relevance_score(self, app_id, search_term):
+        """Get relevance score prioritizing exact search term matches"""
+        if not search_term.strip():
+            return 0
+
+        normalized_term = search_term.strip().lower()
+
+        # Highest priority: exact search term match
+        exact_match_count = self.get_search_term_launch_count(app_id, normalized_term)
+        if exact_match_count > 0:
+            return exact_match_count * 100  # High multiplier for exact matches
+
+        # Medium priority: partial search term matches
+        partial_score = 0
+        for stored_term, app_counts in self.term_app_launches.items():
+            if app_id in app_counts:
+                if normalized_term in stored_term or stored_term in normalized_term:
+                    partial_score += app_counts[app_id] * 10  # Medium multiplier
+
+        # Lowest priority: total launch count (fallback)
+        return partial_score + self.get_total_launch_count(app_id)
 
 
 class LauncherWindow(Adw.ApplicationWindow):
@@ -114,7 +167,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         sorted_apps = sorted(
             unsorted_apps,
             key=lambda app: (
-                -self.app_history.get_launch_count(app.get_id()),
+                -self.app_history.get_total_launch_count(app.get_id()),
                 app.get_name().lower(),
             ),
         )
@@ -144,14 +197,31 @@ class LauncherWindow(Adw.ApplicationWindow):
         search_text = entry.get_text().lower()
         current_selected = self.list_box.get_selected_row()
 
-        # Update visibility of all rows
+        # Get visible rows and their relevance scores
+        visible_rows = []
         for row in self.list_box:
             app_name = row.app_info.get_name().lower()
-            row.set_visible(search_text in app_name)
+            if search_text in app_name:
+                relevance_score = self.app_history.get_search_relevance_score(
+                    row.app_info.get_id(), search_text
+                )
+                visible_rows.append((row, relevance_score))
+                row.set_visible(True)
+            else:
+                row.set_visible(False)
+
+        # Sort visible rows by relevance score (highest first), then by app name
+        visible_rows.sort(key=lambda x: (-x[1], x[0].app_info.get_name().lower()))
+
+        # Reorder the rows in the list box
+        for i, (row, _) in enumerate(visible_rows):
+            # Remove and re-add to move to correct position
+            self.list_box.remove(row)
+            self.list_box.insert(row, i)
 
         # If current selection is hidden or no selection, select first visible
         if not current_selected or not current_selected.get_visible():
-            first_visible = self.find_next_visible_row(0, 1)
+            first_visible = self.find_next_visible_row(-1, 1)
             if first_visible:
                 self.list_box.select_row(first_visible)
 
@@ -170,7 +240,8 @@ class LauncherWindow(Adw.ApplicationWindow):
     def on_search_activate(self, entry):
         selected = self.list_box.get_selected_row()
         if selected:
-            self.launch_app(selected.app_info)
+            search_term = entry.get_text()
+            self.launch_app(selected.app_info, search_term)
         return True
 
     def scroll_to_row(self, row):
@@ -222,8 +293,11 @@ class LauncherWindow(Adw.ApplicationWindow):
             index += direction
         return None
 
-    def launch_app(self, app_info):
-        self.app_history.record_launch(app_info.get_id())
+    def launch_app(self, app_info, search_term):
+        # Only record launch if search term is provided
+        if search_term.strip():
+            self.app_history.record_launch(app_info.get_id(), search_term)
+
         self.search_entry.set_text("")  # Clear search entry
         self.search_entry.emit("search-changed")  # Update list
         self.list_box.unselect_all()  # Clear selection
@@ -241,7 +315,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.close()
 
     def on_row_activated(self, list_box, row):
-        self.launch_app(row.app_info)
+        search_term = self.search_entry.get_text()
+        self.launch_app(row.app_info, search_term)
 
     def on_close_request(self, window):
         # Hide instead of destroy
