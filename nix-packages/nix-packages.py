@@ -168,14 +168,14 @@ class NixPackagesWindow(PickerWindow):
         selected_item = self.get_selected_item()
         if selected_item:
             clipboard = self.get_clipboard()
-            clipboard.set_text(selected_item.name)
+            clipboard.set(selected_item.name)
 
     def on_copy_description_action(self, action, param):
         """Copy package description to clipboard."""
         selected_item = self.get_selected_item()
         if selected_item:
             clipboard = self.get_clipboard()
-            clipboard.set_text(selected_item.description)
+            clipboard.set(selected_item.description)
 
     def _perform_search_request(self, query):
         """Perform the actual search request in a separate thread."""

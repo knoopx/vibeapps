@@ -362,14 +362,14 @@ class ProcessManagerWindow(PickerWindow):
         selected_item = self.get_selected_item()
         if selected_item:
             clipboard = self.get_clipboard()
-            clipboard.set_text(str(selected_item.pid))
+            clipboard.set(str(selected_item.pid))
 
     def on_copy_command_action(self, action, param):
         """Copy process command to clipboard."""
         selected_item = self.get_selected_item()
         if selected_item:
             clipboard = self.get_clipboard()
-            clipboard.set_text(selected_item.cmdline if selected_item.cmdline else selected_item.name)
+            clipboard.set(selected_item.cmdline if selected_item.cmdline else selected_item.name)
 
     def _confirm_and_kill_process(self, process_item, sig, signal_name):
         """Show confirmation dialog and kill process."""
