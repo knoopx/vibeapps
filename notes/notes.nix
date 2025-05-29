@@ -7,7 +7,12 @@
 
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "notes";
-    src = ./.;
+    src = pkgs.runCommand "notes-src" {} ''
+      mkdir -p $out
+      cp -r ${./.}/* $out/
+      cp ${../picker_window.py} $out/picker_window.py
+      cp ${../context_menu_window.py} $out/context_menu_window.py
+    '';
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [

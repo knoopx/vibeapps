@@ -4,6 +4,7 @@ from gi.repository import Gtk, Adw, Gio, Pango, Gdk, GLib
 from constants import EXT, NOTES_DIR # Keep NOTES_DIR for potential direct uses if any, or for context
 from note_content_view import NoteContentView
 from repository import Repository # Import the new Repository class
+from context_menu_window import ContextMenuWindow, ContextMenuAction
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -168,17 +169,16 @@ class MainWindow(Adw.ApplicationWindow):
         ):  # Changed from get_data
             return
 
-        # Create menu model
-        menu_model = Gio.Menu.new()
-        menu_model.append("Open with Editor", "app.open_with_editor")
-        menu_model.append("Rename", "app.rename_note")
-        menu_model.append("Delete", "app.delete_note")
+        # Create context menu actions
+        actions = [
+            ContextMenuAction("Open with Editor", "open_with_editor", lambda: self.on_open_with_editor_action(None, None)),
+            ContextMenuAction("Rename", "rename_note", lambda: self.on_rename_note_action(None, None)),
+            ContextMenuAction("Delete", "delete_note", lambda: self.on_delete_note_action(None, None)),
+        ]
 
-        # Create PopoverMenu
-        popover_menu = Gtk.PopoverMenu.new_from_model(menu_model)
-        popover_menu.set_parent(selected_row)
-        # Actions are already set up in self.note_action_group and inserted with "app" prefix
-        popover_menu.popup()
+        # Show the context menu window
+        context_menu = ContextMenuWindow(self, actions)
+        context_menu.present()
 
     def refresh_note_list(self):
         # Keep track of the currently selected note's relative path
@@ -454,9 +454,10 @@ class MainWindow(Adw.ApplicationWindow):
             return
 
         try:
+            full_path = os.path.join(self.repository.get_notes_dir(), self.current_note.relative_path)
             Gtk.show_uri(
-                None, f"file://{self.current_note.full_path}", Gdk.CURRENT_TIME
-            )  # Use current_note.full_path
+                None, f"file://{full_path}", Gdk.CURRENT_TIME
+            )  # Use constructed full_path
         except Exception as e:
             print(f"Error opening note with default editor: {e}")
 
