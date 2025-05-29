@@ -87,16 +87,23 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.list_box.connect("row-activated", self.on_row_activated)
         self.connect("close-request", self.on_close_request)
 
-        # Add window event controller for activation
-        window_controller = Gtk.EventControllerFocus()
-        window_controller.connect("enter", self.on_window_activate)
-        self.add_controller(window_controller)
-
         # Connect map signal for initial focus
         self.connect("map", self.on_window_map)
 
     def on_window_map(self, window):
+        """Handle when window is mapped (shown)"""
         self.search_entry.grab_focus()
+
+        # If there's text, select all
+        current_text = self.search_entry.get_text()
+        if current_text:
+            self.search_entry.select_region(0, -1)
+
+        # Select first visible item
+        first_visible = self.find_next_visible_row(-1, 1)
+        if first_visible:
+            self.list_box.select_row(first_visible)
+            self.scroll_to_row(first_visible)
 
     def load_apps(self):
         self.apps = []
@@ -241,21 +248,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.set_visible(False)
         return True
 
-    def on_window_activate(self, controller):
-        # Refresh app list in background
-        GLib.idle_add(self.refresh_app_list)
-
-        # Select all text and move caret to end
-        self.search_entry.select_region(0, -1)
-        self.search_entry.set_position(-1)
-        # Ensure first visible item is selected
-        first_visible = self.find_next_visible_row(-1, 1)
-        if first_visible:
-            self.list_box.select_row(first_visible)
-            self.scroll_to_row(first_visible)
-
     def refresh_app_list(self):
-        """Refresh the app list in the background"""
+        """Refresh the app list"""
         # Clear existing apps
         while True:
             row = self.list_box.get_first_child()
@@ -276,8 +270,6 @@ class LauncherWindow(Adw.ApplicationWindow):
             if first_visible:
                 self.list_box.select_row(first_visible)
                 self.scroll_to_row(first_visible)
-
-        return False  # Don't repeat the idle callback
 
 
 class Launcher(Adw.Application):
@@ -300,6 +292,8 @@ class Launcher(Adw.Application):
         if self.window.get_visible():
             self.window.set_visible(False)
         else:
+            # Refresh app list when showing the window
+            self.window.refresh_app_list()
             self.window.present()
 
     def do_command_line(self, command_line):
