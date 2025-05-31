@@ -41,7 +41,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def __init__(self,
                  title: str = "Picker",
                  search_placeholder: str = "Search...",
-                 window_size: tuple = (400, 800),
+                 window_size: tuple = (500, 900),
                  search_delay_ms: int = 300,
                  enable_context_menu: bool = True,
                  context_menu_shortcut: str = "<Control>j",
