@@ -35,7 +35,7 @@ class MainWindow(Adw.ApplicationWindow):
             Gtk.ShortcutScope.MANAGED
         )  # Higher priority than LOCAL
         context_menu_shortcut = Gtk.Shortcut.new(
-            Gtk.ShortcutTrigger.parse_string("<Control>o"),
+            Gtk.ShortcutTrigger.parse_string("<Control>j"),
             Gtk.CallbackAction.new(
                 self._show_note_context_menu_action_callback
             ),  # Wrapper
