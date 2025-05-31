@@ -148,19 +148,22 @@ class LauncherWindow(Adw.ApplicationWindow):
         # Always grab focus first
         self.search_entry.grab_focus()
 
-        # If there's text, select all
         current_text = self.search_entry.get_text()
         if current_text:
             self.search_entry.select_region(0, -1)
-
-        # Ensure we have a proper selection
-        current_selected = self.list_box.get_selected_row()
-        if not current_selected or not current_selected.get_visible():
-            # Select first visible item
-            first_visible = self.find_next_visible_row(-1, 1)
-            if first_visible:
-                self.list_box.select_row(first_visible)
-                self.scroll_to_row(first_visible)
+            # If there was previous search text, re-apply the filter
+            self.on_search_changed(self.search_entry)
+        else:
+            # No search text, ensure the default selection (first item) is visible
+            # This logic is important if refresh_app_list didn't manage to select one,
+            # or if the selected one became invisible for some reason.
+            current_selected = self.list_box.get_selected_row()
+            if not current_selected or not current_selected.get_visible():
+                # Select first visible item
+                first_visible = self.find_next_visible_row(-1, 1)
+                if first_visible:
+                    self.list_box.select_row(first_visible)
+                    self.scroll_to_row(first_visible)
 
     def load_apps(self):
         self.apps = []
@@ -233,11 +236,12 @@ class LauncherWindow(Adw.ApplicationWindow):
             GLib.idle_add(self.list_box.unselect_all)
 
     def _select_row_safe(self, row):
-        """Safely select a row, ensuring it's still valid"""
+        """Safely select a row, ensuring it's still valid and scroll to it"""
         try:
             # Double-check the row is still in the list box
             if row.get_parent() == self.list_box:
                 self.list_box.select_row(row)
+                self.scroll_to_row(row)  # Ensure the selected row is visible
         except Exception:
             pass
         return False  # Don't repeat the idle callback
