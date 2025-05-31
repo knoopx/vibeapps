@@ -38,8 +38,6 @@ class BookmarksWindow(PickerWindow):
         super().__init__(
             title="Bookmarks",
             search_placeholder="Search bookmarks...",
-            window_size=(400, 800),
-            search_delay_ms=200,
             **kwargs
         )
         self._all_bookmarks = []

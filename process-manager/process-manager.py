@@ -110,8 +110,6 @@ class ProcessManagerWindow(PickerWindow):
         super().__init__(
             title="Process Manager",
             search_placeholder="Search processes by name, PID, or command...",
-            window_size=(800, 600),
-            search_delay_ms=200,
             **kwargs,
         )
 

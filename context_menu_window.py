@@ -37,7 +37,6 @@ class ContextMenuWindow(PickerWindow):
         super().__init__(
             title="Actions",
             search_placeholder="Search actions...",
-            window_size=(300, 400),
             enable_context_menu=False,  # Don't enable context menu on the context menu
             **kwargs
         )

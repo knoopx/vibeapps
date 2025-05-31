@@ -65,8 +65,6 @@ class MusicWindow(PickerWindow):
         super().__init__(
             title="Music",
             search_placeholder="Search music...",
-            window_size=(500, 700),
-            search_delay_ms=300,
             **kwargs
         )
 

@@ -40,8 +40,6 @@ class NixPackagesWindow(PickerWindow):
         super().__init__(
             title="Nix Package Search",
             search_placeholder="Search for packages...",
-            window_size=(400, 800),
-            search_delay_ms=300,
             **kwargs
         )
         self._current_search_thread = None
