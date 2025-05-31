@@ -20,6 +20,7 @@ APP_ID = "net.knoopx.process-manager"
 
 class ProcessItem(PickerItem):
     """Represents a running process."""
+
     __gtype_name__ = "ProcessItem"
 
     pid = GObject.Property(type=int, default=0)
@@ -42,7 +43,7 @@ class ProcessItem(PickerItem):
             # Get command line, handle permission errors
             try:
                 cmdline = process.cmdline()
-                self.cmdline = ' '.join(cmdline) if cmdline else self.name
+                self.cmdline = " ".join(cmdline) if cmdline else self.name
             except (psutil.AccessDenied, psutil.NoSuchProcess):
                 self.cmdline = self.name
 
@@ -111,7 +112,7 @@ class ProcessManagerWindow(PickerWindow):
             search_placeholder="Search processes by name, PID, or command...",
             window_size=(800, 600),
             search_delay_ms=200,
-            **kwargs
+            **kwargs,
         )
 
         # Start background refresh after initialization
@@ -140,10 +141,12 @@ class ProcessManagerWindow(PickerWindow):
         filtered = []
         for process in self._current_processes:
             # Search in name, PID, command line, and username
-            if (query_lower in process.name.lower() or
-                query_lower in str(process.pid) or
-                query_lower in process.cmdline.lower() or
-                query_lower in process.username.lower()):
+            if (
+                query_lower in process.name.lower()
+                or query_lower in str(process.pid)
+                or query_lower in process.cmdline.lower()
+                or query_lower in process.username.lower()
+            ):
                 filtered.append(process)
 
         self._filtered_processes = filtered
@@ -161,8 +164,7 @@ class ProcessManagerWindow(PickerWindow):
 
         # Show a dialog with process details
         dialog = Adw.MessageDialog.new(
-            self,
-            f"Process Details: {item.name} (PID: {item.pid})"
+            self, f"Process Details: {item.name} (PID: {item.pid})"
         )
 
         details = f"""
@@ -216,7 +218,6 @@ class ProcessManagerWindow(PickerWindow):
         cmd_label.set_ellipsize(Pango.EllipsizeMode.START)
         cmd_label.add_css_class("caption")
         cmd_label.set_opacity(0.7)
-
 
         # User and status info
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -312,7 +313,7 @@ class ProcessManagerWindow(PickerWindow):
             "terminate_process": "on_terminate_process_action",
             "show_details": "on_show_details_action",
             "copy_pid": "on_copy_pid_action",
-            "copy_command": "on_copy_command_action"
+            "copy_command": "on_copy_command_action",
         }
 
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
@@ -322,12 +323,8 @@ class ProcessManagerWindow(PickerWindow):
 
         menu_model = Gio.Menu.new()
 
-        # Check if we can kill this process (not our own process)
-        current_pid = os.getpid()
-        if item.pid != current_pid:
-            menu_model.append("Terminate Process (SIGTERM)", "context.terminate_process")
-            menu_model.append("Kill Process (SIGKILL)", "context.kill_process")
-
+        menu_model.append("Terminate Process", "context.terminate_process")
+        menu_model.append("Kill Process", "context.kill_process")
         menu_model.append("Copy PID", "context.copy_pid")
         menu_model.append("Copy Command", "context.copy_command")
 
@@ -339,7 +336,7 @@ class ProcessManagerWindow(PickerWindow):
         if not selected_item or selected_item.pid == 0:
             return
 
-        self._kill_process(selected_item, signal.SIGKILL, "KILL")
+        self._kill_process(selected_item, signal.SIGKILL)
 
     def on_terminate_process_action(self, action, param):
         """Terminate process with SIGTERM."""
@@ -347,7 +344,7 @@ class ProcessManagerWindow(PickerWindow):
         if not selected_item or selected_item.pid == 0:
             return
 
-        self._kill_process(selected_item, signal.SIGTERM, "TERM")
+        self._kill_process(selected_item, signal.SIGTERM)
 
     def on_show_details_action(self, action, param):
         """Show process details."""
@@ -367,40 +364,12 @@ class ProcessManagerWindow(PickerWindow):
         selected_item = self.get_selected_item()
         if selected_item:
             clipboard = self.get_clipboard()
-            clipboard.set(selected_item.cmdline if selected_item.cmdline else selected_item.name)
-
-    def _kill_process(self, process_item, sig, signal_name):
-        """Kill process directly without confirmation."""
-        # Don't kill our own process
-        if process_item.pid == os.getpid():
-            return
-
-        try:
-            os.kill(process_item.pid, sig)
-
-            # Show success toast
-            toast = Adw.Toast.new(f"Sent {signal_name} signal to PID {process_item.pid}")
-            toast.set_timeout(3)
-
-            # Create a toast overlay if we don't have one
-            if not hasattr(self, '_toast_overlay'):
-                self._toast_overlay = Adw.ToastOverlay()
-                # We'd need to restructure the UI to add this properly
-                # For now, just print the message
-                print(f"Sent {signal_name} signal to PID {process_item.pid}")
-
-            # Refresh process list after a short delay
-            GLib.timeout_add(500, self._refresh_processes)
-
-        except (ProcessLookupError, PermissionError) as e:
-            # Show error dialog
-            error_dialog = Adw.MessageDialog.new(
-                self,
-                "Failed to Kill Process"
+            clipboard.set(
+                selected_item.cmdline if selected_item.cmdline else selected_item.name
             )
-            error_dialog.set_body(f"Could not send {signal_name} signal to process: {str(e)}")
-            error_dialog.add_response("close", "Close")
-            error_dialog.present()
+
+    def _kill_process(self, process_item, sig):
+        os.kill(process_item.pid, sig)
 
     def _refresh_processes(self):
         """Refresh the process list."""
@@ -411,13 +380,19 @@ class ProcessManagerWindow(PickerWindow):
             """Get processes in background thread."""
             try:
                 processes = []
-                for proc in psutil.process_iter(['pid', 'name', 'username', 'status', 'create_time']):
+                for proc in psutil.process_iter(
+                    ["pid", "name", "username", "status", "create_time"]
+                ):
                     try:
                         # Create ProcessItem from psutil.Process
                         process_item = ProcessItem(proc)
                         if process_item.pid > 0:  # Only add valid processes
                             processes.append(process_item)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    except (
+                        psutil.NoSuchProcess,
+                        psutil.AccessDenied,
+                        psutil.ZombieProcess,
+                    ):
                         # Skip processes we can't access or that disappeared
                         continue
 
@@ -455,7 +430,9 @@ class ProcessManagerWindow(PickerWindow):
         """Update the UI with current filtered processes, preserving existing items and selection when possible."""
         if not self._filtered_processes:
             self.remove_all_items()
-            self._show_empty("No Processes Found", "No processes match your search criteria.")
+            self._show_empty(
+                "No Processes Found", "No processes match your search criteria."
+            )
             return
 
         # Remember the currently selected process PID and position
@@ -555,10 +532,12 @@ class ProcessManagerWindow(PickerWindow):
     def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
         """Handle additional keyboard shortcuts."""
         # Handle Ctrl+O for context menu
-        if (keyval == Gdk.KEY_o and
-            state & Gdk.ModifierType.CONTROL_MASK and
-            not state & Gdk.ModifierType.SHIFT_MASK and
-            not state & Gdk.ModifierType.ALT_MASK):
+        if (
+            keyval == Gdk.KEY_o
+            and state & Gdk.ModifierType.CONTROL_MASK
+            and not state & Gdk.ModifierType.SHIFT_MASK
+            and not state & Gdk.ModifierType.ALT_MASK
+        ):
             selected_item = self.get_selected_item()
             if selected_item:
                 menu_model = self.get_context_menu_model(selected_item)
