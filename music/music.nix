@@ -5,8 +5,12 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "music";
-    src = ./.;
-    dontUnpack = true;
+    src = pkgs.runCommand "music-src" {} ''
+      mkdir -p $out
+      cp ${./music.py} $out/music.py
+      cp ${../picker_window.py} $out/picker_window.py
+      cp ${../context_menu_window.py} $out/context_menu_window.py
+    '';
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -31,10 +35,17 @@
     '';
 
     buildPhase = ''
-      mkdir -p $out/{bin,share}
-      cp -r $src $out/share/music
-      chmod +x $out/share/music/music.py
-      ln -s $out/share/music/music.py $out/bin/music
+      mkdir -p $out/bin $out/lib/python
+      cp $src/picker_window.py $out/lib/python/
+      cp $src/context_menu_window.py $out/lib/python/
+      cp $src/music.py $out/bin/music
+      chmod +x $out/bin/music
+    '';
+
+    postFixup = ''
+      # Ensure picker_window.py is in the Python path
+      wrapProgram $out/bin/music \
+        --prefix PYTHONPATH : $out/lib/python
     '';
 
     meta.mainProgram = "music";

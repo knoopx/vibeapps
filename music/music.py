@@ -1,460 +1,722 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from typing import Dict
-import concurrent.futures
+import re
 import gi
 import os
-import re
+import sys
 import threading
-import json
 import time
-
-
-from circular_progress import CircularProgress
-from scanner import Scanner
-from release import Release
-from database import MusicDatabase
+import json
+from pathlib import Path
+from typing import Optional
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-gi.require_version("Gst", "1.0")
+gi.require_version("Pango", "1.0")
 
-from gi.repository import (
-    Gtk,
-    Adw,
-    GLib,
-    Gio,
-    Gst,
-    Gdk,
-    Pango,  # Add this import
-)
+from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
+from picker_window import PickerWindow, PickerItem
 
-MUSIC_DIR = os.path.expanduser("~/Music")
+APP_ID = "net.knoopx.music"
+
+# Common audio file extensions
+AUDIO_EXTENSIONS = {
+    '.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.opus', '.wma', '.ape', '.alac'
+}
+
+# Cache configuration
+CACHE_DIR = Path.home() / ".cache" / "net.knoopx.music"
+CACHE_FILE = CACHE_DIR / "releases_cache.json"
+CACHE_VERSION = 1  # Increment when cache format changes
 
 
-class SearchFilter(Gtk.Filter):
-    def __init__(self):
+class ReleaseItem(PickerItem):
+    """Represents a music release (album/directory)."""
+    __gtype_name__ = "ReleaseItem"
+
+    title = GObject.Property(type=str, default="")
+    path = GObject.Property(type=str, default="")
+    track_count = GObject.Property(type=int, default=0)
+
+    def __init__(self, title: str, path: str, track_count: int = 0):
         super().__init__()
-        self.search_text = ""
-        self.pending_text = ""
-        self._update_timeout = None
-        self.show_starred_only = False
-        # Add regex patterns for CD notations
-        self.cd_patterns = [
-            r"\s+CD\d+",  # Matches: CD1, CD2, CD3, etc
-            r"\s+\d+CD",  # Matches: 2CD, 3CD, etc
-            r"\s+CDS\d+",  # Matches: CDS1, CDS2, etc
-        ]
+        self.title = title
+        self.path = path
+        self.track_count = track_count
 
-    def set_search_text(self, search_text: str):
-        self.pending_text = search_text.lower()
-        # Cancel any pending update
-        if self._update_timeout:
-            GLib.source_remove(self._update_timeout)
-        # Schedule update in 150ms
-        self._update_timeout = GLib.timeout_add(150, self._do_update_filter)
 
-    def _do_update_filter(self):
-        self.search_text = self.pending_text
-        self.changed(Gtk.FilterChange.DIFFERENT)
-        self._update_timeout = None
-        return GLib.SOURCE_REMOVE
+class MusicWindow(PickerWindow):
+    """Music launcher window that shows releases/albums."""
 
-    def set_show_starred_only(self, show_starred):
-        self.show_starred_only = show_starred
-        self.changed(Gtk.FilterChange.DIFFERENT)
+    def __init__(self, **kwargs):
+        # Initialize attributes before calling super().__init__
+        self._all_releases = []
+        self._music_dir = Path.home() / "Music"
+        self._search_idle_id = 0  # For non-blocking search operations
+        self._filter_idle_id = 0  # For non-blocking filtering operations
+        self._scan_generator = None  # Track current scan generator
+        self._scan_cancelled = False  # Flag to cancel scanning
+        self._cache_loaded = False  # Flag to prevent duplicate loading
+        self._background_scan_running = False  # Flag to prevent concurrent scans
+        self._current_query = ""  # Track current search query for sync
+        self._current_filter_state = None  # Track filter operation state
+        self._current_result_state = None  # Track result addition state
 
-    def do_match(self, item: Release) -> bool:
-        if self.show_starred_only and not item.starred:
-            return False
+        super().__init__(
+            title="Music",
+            search_placeholder="Search music...",
+            window_size=(500, 700),
+            search_delay_ms=300,
+            **kwargs
+        )
 
-        if not self.search_text:
+    # Required abstract method implementations
+    def get_item_type(self):
+        return ReleaseItem
+
+    def use_list_view(self):
+        return True  # Use modern ListView
+
+    def load_initial_data(self):
+        """Scan music directory for releases, using cache if available."""
+        print("MusicWindow: load_initial_data called")
+        if not self._music_dir.exists():
+            self._show_empty(
+                title="Music Directory Not Found",
+                description=f"Could not find music directory at {self._music_dir}"
+            )
+            return
+
+        # Prevent duplicate loading
+        if self._cache_loaded or self._background_scan_running:
+            return
+
+        # Mark that we're starting to prevent concurrent loads
+        self._cache_loaded = True
+        print("MusicWindow: Attempting to load from cache...")
+        # Try to load from cache first
+        if self._load_from_cache():
+            # Cache loading started successfully - background scan will be started
+            # after cache loading completes in _finalize_cache_loading
+            print("MusicWindow: Cache load initiated.")
+            pass
+        else:
+            # No valid cache, reset flag and do a full scan
+            print("MusicWindow: No valid cache found or cache load failed. Starting full scan.")
+            self._cache_loaded = False
+            self._initialize_scanning()
+            self._background_scan_running = True
+            thread = threading.Thread(target=self._scan_music_directory)
+            thread.daemon = True
+            thread.start()
+        print("MusicWindow: load_initial_data finished")
+
+    def _scan_music_directory(self):
+        """Scan the music directory for audio files and create release items."""
+        print("MusicWindow: _scan_music_directory started")
+        def scan_generator():
+            """Generator that yields each new release as it's found."""
+            try:
+                found_releases = set()  # Track paths we've already processed
+                dirs_processed = 0
+                releases_found = 0
+                start_time = time.time()
+                last_yield_time = start_time
+
+                # Walk through all directories in Music folder, following symlinks
+                for root, dirs, files in os.walk(self._music_dir, followlinks=True):
+                    # Check for cancellation
+                    if self._scan_cancelled:
+                        return
+
+                    root_path = Path(root)
+
+                    # Skip hidden directories and very deep nested paths
+                    if any(part.startswith('.') for part in root_path.parts):
+                        continue
+
+                    # Skip paths that are too deep (> 10 levels from music dir) to avoid infinite recursion
+                    try:
+                        relative_path = root_path.relative_to(self._music_dir)
+                        if len(relative_path.parts) > 10:
+                            continue
+                    except ValueError:
+                        # Not relative to music dir, skip
+                        continue
+
+                    # Count audio files in this directory
+                    audio_files = [f for f in files if Path(f).suffix.lower() in AUDIO_EXTENSIONS]
+
+                    if audio_files:
+                        # Use the immediate parent directory as the release
+                        release_path = root_path
+                        release_title = release_path.name
+                        release_title = re.sub(r'_', ' ', release_title)
+                        release_title = re.sub(r'\-+', '-', release_title)
+                        release_title = re.sub(r'\s+\-\s+', '-', release_title)
+                        release_title = release_title.strip()
+
+                        # Skip if it's the root Music directory itself
+                        if release_path == self._music_dir:
+                            continue
+
+                        # Only yield new releases we haven't seen before
+                        path_str = str(release_path)
+                        if path_str not in found_releases:
+                            found_releases.add(path_str)
+                            new_release = ReleaseItem(
+                                title=release_title,
+                                path=path_str,
+                                track_count=len(audio_files)
+                            )
+                            releases_found += 1
+                            yield new_release
+
+                    dirs_processed += 1
+                    current_time = time.time()
+
+                    # Yield control every 10 directories OR every 100ms to prevent overwhelming
+                    if dirs_processed % 10 == 0 or (current_time - last_yield_time) > 0.1:
+                        last_yield_time = current_time
+                        yield None  # Just yield control, no new release
+
+            except Exception as e:
+                GLib.idle_add(self._show_error, f"Error scanning music directory: {str(e)}")
+                print(f"MusicWindow: Error in scan_generator: {e}")
+                return
+
+        # Start the incremental scanning directly
+        self._scan_generator = scan_generator()
+        GLib.idle_add(self._continue_scanning)
+        print("MusicWindow: _scan_music_directory finished, incremental scan scheduled")
+
+    def _update_releases(self, releases):
+        """Update the UI with scanned releases."""
+        self._all_releases = releases
+        self.remove_all_items()
+
+        for release in self._all_releases:
+            self.add_item(release)
+
+        if self._all_releases:
+            self._show_results()
+        else:
+            self._show_empty(
+                title="No Music Found",
+                description=f"No audio files found in {self._music_dir}"
+            )
+
+    def _load_from_cache(self) -> bool:
+        """Load releases from cache if available and valid."""
+        print("MusicWindow: _load_from_cache called")
+        try:
+            if not CACHE_FILE.exists():
+                print("MusicWindow: Cache file does not exist.")
+                return False
+
+            # Check file size first - if it's huge, we know it'll be slow
+            file_size = CACHE_FILE.stat().st_size
+
+            # Quick validation of cache file before loading
+            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                # For very large files (>50MB), start async loading immediately
+                # The json.load() call below (or in _load_large_cache_async)
+                # will handle actual JSON validation.
+                if file_size > 50 * 1024 * 1024:  # 50MB
+                    print("MusicWindow: Large cache file detected, starting async load.")
+                    self.set_loading(True)
+                    threading.Thread(
+                        target=self._load_large_cache_async,
+                        args=(str(CACHE_FILE),),
+                        daemon=True
+                    ).start()
+                    return True
+
+                print("MusicWindow: Loading cache data from file.")
+                cache_data = json.load(f)
+
+            # Validate cache format and version
+            if (cache_data.get('version') != CACHE_VERSION or
+                'music_dir' not in cache_data or
+                'releases' not in cache_data or
+                'last_modified' not in cache_data):
+                print("MusicWindow: Cache data validation failed (version, keys).")
+                return False
+
+            # Check if cache is for the same music directory
+            if cache_data['music_dir'] != str(self._music_dir):
+                print("MusicWindow: Cache is for a different music directory.")
+                return False
+
+            # Check if music directory has been modified since cache was created
+            music_dir_mtime = self._music_dir.stat().st_mtime
+            cache_mtime = cache_data['last_modified']
+
+            # If music dir is newer than cache, cache is stale
+            if music_dir_mtime > cache_mtime:
+                print("MusicWindow: Music directory modified since cache creation, cache is stale.")
+                return False
+
+            # Always load asynchronously for consistency and performance
+            print("MusicWindow: Cache is valid, starting background load.")
+            self.set_loading(True)
+            # Start background loading
+            threading.Thread(
+                target=self._load_cache_in_background,
+                args=(cache_data['releases'],),
+                daemon=True
+            ).start()
             return True
 
-        terms = self.search_text.split()
+        except (json.decoder.JSONDecodeError, KeyError, OSError, FileNotFoundError) as e:
+            print(f"MusicWindow: Error loading from cache: {e}")
+            # If cache is corrupted or unreadable, remove it
+            try:
+                CACHE_FILE.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
 
-        # Clean up title by removing all CD notations
-        clean_title = item.title
-        for pattern in self.cd_patterns:
-            clean_title = re.sub(pattern, "", clean_title, flags=re.IGNORECASE)
+    def _load_large_cache_async(self, cache_file_path):
+        """Load very large cache files completely asynchronously."""
+        print(f"MusicWindow: _load_large_cache_async started for {cache_file_path}")
+        try:
+            with open(cache_file_path, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            print("MusicWindow: Large cache file read.")
+            # Basic validation
+            if (cache_data.get('version') != CACHE_VERSION or
+                'music_dir' not in cache_data or
+                'releases' not in cache_data):
+                print("MusicWindow: Large cache data validation failed.")
+                GLib.idle_add(self._handle_cache_error)
+                return
 
-        # Include label in the searchable text with cleaned title
-        text = f"{clean_title} {item.artist} {item.year if item.year else ''} {item.tags_string} {item.label_string}".lower()
+            # Check music directory
+            if cache_data['music_dir'] != str(self._music_dir):
+                print("MusicWindow: Large cache is for a different music directory.")
+                GLib.idle_add(self._handle_cache_error)
+                return
 
-        return all(term in text for term in terms)
+            # Check if stale
+            music_dir_mtime = self._music_dir.stat().st_mtime
+            cache_mtime = cache_data.get('last_modified', 0)
+            if music_dir_mtime > cache_mtime:
+                print("MusicWindow: Large cache is stale.")
+                GLib.idle_add(self._handle_cache_error)
+                return
 
-    def do_get_strictness(self):
-        return Gtk.FilterMatch.SOME
+            # Process in background
+            print("MusicWindow: Processing large cache in background.")
+            self._load_cache_in_background(cache_data['releases'])
 
+        except Exception as e:
+            print(f"MusicWindow: Error loading large cache async: {e}")
+            GLib.idle_add(self._handle_cache_error)
+        print("MusicWindow: _load_large_cache_async finished.")
 
-class MainWindow(Adw.ApplicationWindow):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.selected_release = None
+    def _load_cache_in_background(self, releases_data):
+        """Load large cache in background with batched UI updates."""
+        print(f"MusicWindow: _load_cache_in_background started with {len(releases_data)} items.")
+        try:
+            # Process releases in batches
+            batch_size = 1000
+            all_releases = []
 
-        # Add CSS provider
-        css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(
-            """
-            .tag-pill {
-                background-color: alpha(currentColor, 0.1);
-                border-radius: 4px;
-                padding: 2px 8px;
-                margin: 2px;
-                font-size: 0.8em;
-            }
+            for i in range(0, len(releases_data), batch_size):
+                if self._scan_cancelled:
+                    return
 
-            .rounded {
-                border-radius: 6px;
-            }
+                batch = releases_data[i:i + batch_size]
+                batch_releases = []
 
-            .title-box {
-                min-height: 24px;
-            }
+                for release_data in batch:
+                    # Cache validity, including directory mtime, is checked before this function.
+                    # We assume cached paths are valid; _scan_and_update_cache will reconcile later.
+                    release = ReleaseItem(
+                        title=release_data['title'],
+                        path=release_data['path'],
+                        track_count=release_data['track_count']
+                    )
+                    batch_releases.append(release)
 
-            .loading-page {
-                margin: 48px;
-            }
+                all_releases.extend(batch_releases)
 
-            .loading-page.compact {
-                font-size: 0.9em;
-            }
+                # Update UI with progress every few batches
+                if i == 0 or (i // batch_size) % 5 == 0:
+                    GLib.idle_add(self._update_cache_loading_progress, len(all_releases), len(releases_data))
+                    print(f"MusicWindow: Cache loading progress: {len(all_releases)}/{len(releases_data)}")
 
-            .loading-page.compact picture {
-                -gtk-icon-size: 32px;
-            }
+            if all_releases:
+                # Sort in background
+                print("MusicWindow: Sorting cached releases.")
+                all_releases.sort(key=lambda r: r.title.lower())
 
-            .ghost-star {
-                padding: 4px;
-                min-width: 24px;
-                min-height: 24px;
-                opacity: 0.5;
-                background: none;
-                color: currentColor;
-            }
+                # Update main thread
+                print("MusicWindow: Scheduling finalization of cache loading.")
+                GLib.idle_add(self._finalize_cache_loading, all_releases)
+            else:
+                print("MusicWindow: No releases found in cache data, handling empty cache.")
+                GLib.idle_add(self._handle_empty_cache)
 
-            .ghost-star:hover {
-                opacity: 1;
-                background: none;
-            }
-        """.encode()
-        )
-        Gtk.StyleContext.add_provider_for_display(
-            self.get_display(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+        except Exception as e:
+            print(f"MusicWindow: Error in _load_cache_in_background: {e}")
+            GLib.idle_add(self._handle_cache_error)
+        print("MusicWindow: _load_cache_in_background finished.")
 
-        self.header = Adw.HeaderBar()
-        self.search = Gtk.SearchEntry()
-        self.search.set_hexpand(True)
-        self.search.connect("search-changed", self._on_search_changed)
-        self.header.set_title_widget(self.search)
-        self.header.add_css_class("flat")
+    def _update_cache_loading_progress(self, loaded, total):
+        """Update UI with cache loading progress."""
+        # Could show progress in status or title
+        # For now, just ensure we stay in loading state
+        self.set_loading(True)
+        return False
 
-        # Add star filter button
-        self.star_filter = Gtk.ToggleButton(icon_name="non-starred-symbolic")
-        self.star_filter.add_css_class("flat")
-        self.star_filter.add_css_class("ghost-star")
-        self.star_filter.connect("toggled", self._on_star_filter_toggled)
-        self.header.pack_end(self.star_filter)  # Changed from pack_start to pack_end
+    def _finalize_cache_loading(self, all_releases):
+        """Finalize cache loading on main thread."""
+        print(f"MusicWindow: _finalize_cache_loading called with {len(all_releases)} releases.")
+        # Ensure we don't duplicate if already loaded
+        if self._all_releases:
+            print("MusicWindow: Releases already loaded, skipping finalize.")
+            return False
 
-        # Add key controller for escape to focus search
-        key_controller = Gtk.EventControllerKey()
-        key_controller.connect("key-pressed", self._on_key_press)
-        self.add_controller(key_controller)
+        self._all_releases = all_releases
+        self.set_loading(False)
 
-        # Create overlay for header
-        self.header_overlay = Gtk.Overlay()
-        self.header_overlay.set_child(self.header)
+        # Clear any existing items to prevent duplicates
+        self.remove_all_items()
 
-        # Add circular progress in an overlay
-        progress_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        progress_box.set_halign(Gtk.Align.START)
-        progress_box.set_valign(Gtk.Align.CENTER)
-        progress_box.set_margin_start(12)
-
-        self.progress = CircularProgress()
-        self.progress.set_visible(False)
-        progress_box.append(self.progress)
-
-        self.header_overlay.add_overlay(progress_box)
-
-        self.stack = Gtk.Stack()
-        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.albums_page = Gtk.Box()
-        self.queue_page = Gtk.Box()
-
-        # Add loading page
-        loading_page = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER,
-            css_classes=["loading-page", "compact"],
-        )
-        spinner = Gtk.Spinner(
-            spinning=True,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER,
-            width_request=48,  # Set explicit size
-            height_request=48,  # Set explicit size
-        )
-        loading_page.append(spinner)
-
-        # Add CSS for compact loading page
-        css_provider.load_from_data(
-            """
-            .tag-pill {
-                background-color: alpha(currentColor, 0.1);
-                border-radius: 4px;
-                padding: 2px 8px;
-                margin: 2px;
-                font-size: 0.8em;
-            }
-
-            .rounded {
-                border-radius: 6px;
-            }
-
-            .title-box {
-                min-height: 24px;
-            }
-
-            .loading-page {
-                margin: 48px;
-            }
-
-            .loading-page.compact {
-                font-size: 0.9em;
-            }
-
-            .loading-page.compact spinner {
-                min-width: 48px;
-                min-height: 48px;
-            }
-
-            .loading-page.compact picture {
-                -gtk-icon-size: 32px;
-            }
-
-            .ghost-star {
-                padding: 4px;
-                min-width: 24px;
-                min-height: 24px;
-                opacity: 0.5;
-                background: none;
-                color: currentColor;
-            }
-
-            .ghost-star:hover {
-                opacity: 1;
-                background: none;
-            }
-        """.encode()
-        )
-
-        self.stack.add_named(loading_page, "loading")
-
-        self.stack.add_titled(self.albums_page, "albums", "Albums")
-        self.stack.add_titled(self.queue_page, "queue", "Queue")
-
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.box.append(self.header_overlay)  # Use header_overlay instead of header
-        self.box.append(self.stack)
-
-        self.set_content(self.box)
-        self.set_default_size(800, 600)
-
-        self.setup_albums_view()
-
-    def setup_albums_view(self):
-        self.albums_model = Gio.ListStore(item_type=Release)
-        self.search_filter = SearchFilter()
-        self.filtered_model = Gtk.FilterListModel(
-            model=self.albums_model, filter=self.search_filter
-        )
-
-        # Add search controller
-        self.search.set_margin_start(100)
-        self.search.set_margin_end(100)
-
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("setup", self._on_album_setup)
-        factory.connect("bind", self._on_album_bind)
-
-        selection = Gtk.SingleSelection(model=self.filtered_model)
-        selection.connect("selection-changed", self._on_selection_changed)
-        self.albums_list = Gtk.ListView(model=selection, factory=factory)
-        self.albums_list.add_css_class("navigation-sidebar")
-        self.albums_list.connect("activate", self._on_row_activated)
-
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_vexpand(True)
-        scrolled.set_hexpand(True)
-        scrolled.set_child(self.albums_list)
-        self.albums_page.append(scrolled)
-
-    def _on_star_filter_toggled(self, button):
-        if button.get_active():
-            button.set_icon_name("starred-symbolic")
+        # Apply any active search or show all results
+        current_query = self.get_search_text().strip()
+        if current_query:
+            self.on_search_changed(current_query)
         else:
-            button.set_icon_name("non-starred-symbolic")
-        self.search_filter.set_show_starred_only(button.get_active())
+            # Use batched loading for UI updates too
+            self._start_batched_result_addition(self._all_releases)
 
-    def _on_album_setup(self, factory, list_item):
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        box.set_hexpand(True)  # Make box expand horizontally
-        box.set_margin_start(9)
-        box.set_margin_end(9)
-        box.set_margin_top(6)
-        box.set_margin_bottom(6)
-        box.set_valign(Gtk.Align.CENTER)
+        # After cache is successfully loaded and UI updated,
+        # start a background scan for any updates since the cache was created.
+        # This fulfills the comment in load_initial_data.
+        if not self._background_scan_running:
+            self._background_scan_running = True
+            print("MusicWindow: Starting background scan for cache updates after initial load.")
+            thread = threading.Thread(target=self._scan_and_update_cache)
+            thread.daemon = True
+            thread.start()
+        else:
+            print("MusicWindow: Background scan already running or not needed.")
 
-        # Add right-click gesture
-        gesture = Gtk.GestureClick.new()
-        gesture.set_button(Gdk.BUTTON_SECONDARY)  # Button 3 is right-click
-        gesture.connect("pressed", self._on_album_right_click)
-        box.add_controller(gesture)
+        print("MusicWindow: _finalize_cache_loading finished.")
+        return False # Important for GLib.idle_add to not re-schedule this handler
 
-        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        info_box.set_hexpand(True)
-        info_box.set_valign(Gtk.Align.CENTER)
-
-        upper_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        upper_box.set_hexpand(True)
-
-        # Create box for just title and year that will stay together
-        title_year_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        title_year_box.set_hexpand(True)
-
-        title = Gtk.Label(xalign=0, css_classes=["title"])
-        title.add_css_class("heading")
-        title.set_valign(Gtk.Align.CENTER)
-        title.set_ellipsize(Pango.EllipsizeMode.END)
-        title_year_box.append(title)
-
-        year = Gtk.Label(xalign=0)
-        year.add_css_class("caption")
-        year.add_css_class("dim-label")
-        year.set_valign(Gtk.Align.CENTER)
-        year.set_hexpand(True)
-        year.set_wrap(False)
-        title_year_box.append(year)
-
-        # Add title_year_box to upper_box first
-        upper_box.append(title_year_box)
-
-        # Then add tags_box to upper_box
-        tags_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=3)
-        tags_box.set_hexpand(False)
-        upper_box.append(tags_box)
-
-        artist = Gtk.Label(xalign=0, css_classes=["artist"])
-        artist.add_css_class("caption")
-        artist.set_opacity(0.7)
-        artist.set_ellipsize(Pango.EllipsizeMode.END)  # Add ellipsis for overflow
-
-        info_box.append(upper_box)
-        info_box.append(artist)
-
-        box.append(info_box)
-
-        # Add star button
-        star_button = Gtk.Button(icon_name="non-starred-symbolic")
-        star_button.add_css_class("flat")
-        star_button.add_css_class("ghost-star")
-        star_button.set_valign(Gtk.Align.CENTER)
-        box.append(star_button)
-
-        list_item.set_child(box)
-
-    def _on_album_bind(self, factory, list_item):
-        box = list_item.get_child()
-        release = list_item.get_item()
-
-        # Store the release object on the box widget so we can access it in right-click handler
-        box.release = release
-
-        info_box = box.get_first_child()
-        upper_box = info_box.get_first_child()
-        title_year_box = upper_box.get_first_child()
-        tags_box = upper_box.get_last_child()
-
-        title = title_year_box.get_first_child()
-        year = title_year_box.get_last_child()
-        artist = info_box.get_last_child()
-
-        title.set_text(release.title)
-        year.set_text(str(release.year) if release.year else "")
-        artist.set_text(release.artist)
-
-        # Remove old tags and label pills
-        while tags_box.get_first_child():
-            tags_box.remove(tags_box.get_first_child())
-
-        # Add label pill if it exists
-        if release.group:
-            label_pill = Gtk.Label(label=release.group)
-            label_pill.add_css_class("tag-pill")
-            label_pill.add_css_class("caption")
-            label_pill.add_css_class("dim-label")
-            tags_box.append(label_pill)
-
-        # Use tags directly from release instead of track
-        for tag in sorted(release.tags):
-            pill = Gtk.Label(label=tag)
-            pill.add_css_class("tag-pill")
-            pill.add_css_class("caption")
-            pill.add_css_class("dim-label")
-            tags_box.append(pill)
-
-        # Update star button
-        star_button = box.get_last_child()
-        star_button.set_icon_name(
-            "starred-symbolic" if release.starred else "non-starred-symbolic"
+    def _handle_empty_cache(self):
+        """Handle empty cache on main thread."""
+        self.set_loading(False)
+        self._show_empty(
+            title="No Music Found",
+            description=f"No audio files found in {self._music_dir}"
         )
-        star_button.connect("clicked", self._on_star_clicked, release)
+        return False
 
-    def _on_star_clicked(self, button, release):
-        release.starred = not release.starred
-        button.set_icon_name(
-            "starred-symbolic" if release.starred else "non-starred-symbolic"
-        )
-        # Update database directly for better performance
-        app = self.get_application()
-        app.db.update_release_starred(release.path, release.starred)
+    def _handle_cache_error(self):
+        """Handle cache loading error on main thread."""
+        print("MusicWindow: _handle_cache_error called.")
+        self.set_loading(False)
+        self._cache_loaded = False  # Reset flag so we can try full scan
+        self._clear_all_operations()
+        # Fall back to full scan
+        if not self._background_scan_running:
+            self._initialize_scanning()
+            self._background_scan_running = True
+            print("MusicWindow: Cache error, falling back to full scan.")
+            thread = threading.Thread(target=self._scan_music_directory)
+            thread.daemon = True
+            thread.start()
+        return False
 
-    def _on_album_right_click(self, gesture, n_press, x, y):
-        if n_press == 1:
-            # Get the box widget that contains our gesture
-            box = gesture.get_widget()
-            if not box:
-                return
+    def _save_to_cache(self):
+        """Save current releases to cache."""
+        try:
+            # Ensure cache directory exists
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-            # Get the release from the box widget (stored during bind)
-            if not hasattr(box, 'release'):
-                return
+            # Prepare cache data
+            cache_data = {
+                'version': CACHE_VERSION,
+                'music_dir': str(self._music_dir),
+                'last_modified': time.time(),
+                'releases': []
+            }
 
-            release_item = box.release
-            if not release_item:
-                return
+            # Add release data
+            for release in self._all_releases:
+                cache_data['releases'].append({
+                    'title': release.title,
+                    'path': release.path,
+                    'track_count': release.track_count
+                })
 
-            # Update the selected release directly
-            self.selected_release = release_item
+            # Write cache atomically
+            temp_file = CACHE_FILE.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, indent=2, ensure_ascii=False)
 
-            # Create the menu
-            menu = Gio.Menu.new()
-            menu.append("Reveal in File Explorer", "app.reveal_in_file_explorer")
+            # Atomic rename
+            temp_file.replace(CACHE_FILE)
 
-            # Create and show the popover menu
-            popover = Gtk.PopoverMenu.new_from_model(menu)
-            popover.set_parent(box)  # Attach to the box widget
-            popover.popup()
+        except (OSError, json.decoder.JSONDecodeError) as e:
+            # If caching fails, just log it but don't crash
+            print(f"Warning: Failed to save cache: {e}")
 
-    def _on_selection_changed(self, selection, position, n_items):
-        self.selected_release = selection.get_selected_item()
+    def _scan_and_update_cache(self):
+        """Scan music directory and update cache in background."""
+        print("MusicWindow: _scan_and_update_cache started.")
+        # Perform scan to check for new/removed releases
+        new_releases = []
+        found_releases = set()
 
-    def _on_row_activated(self, list_view, position):
-        if self.selected_release and self.selected_release.tracks:
-            folder = os.path.dirname(self.selected_release.tracks[0].path)
+        try:
+            for root, dirs, files in os.walk(self._music_dir, followlinks=True):
+                if self._scan_cancelled:
+                    return
+
+                root_path = Path(root)
+
+                # Skip hidden directories and very deep nested paths
+                if any(part.startswith('.') for part in root_path.parts):
+                    continue
+
+                # Skip paths that are too deep
+                try:
+                    relative_path = root_path.relative_to(self._music_dir)
+                    if len(relative_path.parts) > 10:
+                        continue
+                except ValueError:
+                    continue
+
+                # Count audio files
+                audio_files = [f for f in files if Path(f).suffix.lower() in AUDIO_EXTENSIONS]
+
+                if audio_files:
+                    if root_path == self._music_dir:
+                        continue
+
+                    path_str = str(root_path)
+                    if path_str not in found_releases:
+                        found_releases.add(path_str)
+
+                        release_title = root_path.name
+                        release_title = re.sub(r'_', ' ', release_title)
+                        release_title = re.sub(r'\-+', '-', release_title)
+                        release_title = re.sub(r'\s+\-\s+', '-', release_title)
+
+                        new_release = ReleaseItem(
+                            title=release_title,
+                            path=path_str,
+                            track_count=len(audio_files)
+                        )
+                        new_releases.append(new_release)
+
+            # Check if scan results differ from cache
+            new_paths = {r.path for r in new_releases}
+            cached_paths = {r.path for r in self._all_releases}
+
+            if new_paths != cached_paths:
+                # Results changed, update UI and cache
+                print(f"MusicWindow: Cache changed. Old: {len(cached_paths)}, New: {len(new_paths)}. Updating UI and saving cache.")
+                self._all_releases = new_releases
+                self._all_releases.sort(key=lambda r: r.title.lower())
+
+                # Update UI on main thread
+                GLib.idle_add(self._refresh_ui_with_sorted_releases)
+
+                # Save updated cache
+                self._save_to_cache()
+                print("MusicWindow: Cache updated and saved.")
+            else:
+                print("MusicWindow: No changes found during background scan.")
+
+        except Exception as e:
+            print(f"MusicWindow: Warning: Background scan failed: {e}")
+        finally:
+            # Reset the background scan flag
+            print("MusicWindow: _scan_and_update_cache finished.")
+            self._background_scan_running = False
+
+    def on_search_changed(self, query: str):
+        """Filter releases based on search query."""
+        # Cancel any pending operations and clear state
+        if hasattr(self, '_search_idle_id') and self._search_idle_id > 0:
+            GLib.source_remove(self._search_idle_id)
+            self._search_idle_id = 0
+        if hasattr(self, '_filter_idle_id') and self._filter_idle_id > 0:
+            GLib.source_remove(self._filter_idle_id)
+            self._filter_idle_id = 0
+
+        # Clear any ongoing filter state to prevent stale results
+        if hasattr(self, '_current_filter_state'):
+            self._current_filter_state = None
+        if hasattr(self, '_current_result_state'):
+            self._current_result_state = None
+
+        # Track current query to validate results
+        self._current_query = query.strip()
+
+        # Clear UI immediately for responsive feel
+        self.remove_all_items()
+
+        # Handle empty query quickly
+        if not query:
+            # For large collections, use batched addition even for "show all"
+            if len(self._all_releases) > 100:
+                self._start_batched_result_addition(self._all_releases)
+            else:
+                # For small collections, add all at once
+                for release in self._all_releases:
+                    self.add_item(release)
+                if self._all_releases:
+                    self._show_results()
+                else:
+                    self._show_empty(
+                        title="No Music Found",
+                        description=f"No audio files found in {self._music_dir}"
+                    )
+            return
+
+        # For non-empty queries, filter efficiently
+        query_lower = query.lower()
+
+        # Simple filtering for small collections (< 100 items)
+        if len(self._all_releases) < 100:
+            filtered_releases = [
+                release for release in self._all_releases
+                if query_lower in release.title.lower()
+            ]
+            self._apply_search_results(filtered_releases, query)
+        else:
+            # Use batched filtering for large collections
+            self._start_batched_filtering(query_lower, query)
+
+    def _start_batched_filtering(self, query_lower, original_query):
+        """Start batched filtering for large collections."""
+        self._current_filter_state = {
+            'query_lower': query_lower,
+            'original_query': original_query,
+            'filtered_releases': [],
+            'current_index': 0,
+            'batch_size': 100  # Smaller batches for better responsiveness
+        }
+
+        self._filter_idle_id = GLib.idle_add(self._filter_next_batch)
+
+    def _filter_next_batch(self):
+        """Filter the next batch of releases."""
+        # Check if filter state was cleared (search changed)
+        if not hasattr(self, '_current_filter_state') or self._current_filter_state is None:
+            self._filter_idle_id = 0
+            return False
+
+        state = self._current_filter_state
+
+        # Validate that we haven't exceeded bounds
+        if state['current_index'] >= len(self._all_releases):
+            self._filter_idle_id = 0
+            return False
+
+        end_index = min(state['current_index'] + state['batch_size'], len(self._all_releases))
+
+        # Process this batch
+        for i in range(state['current_index'], end_index):
+            release = self._all_releases[i]
+            if state['query_lower'] in release.title.lower():
+                state['filtered_releases'].append(release)
+
+        state['current_index'] = end_index
+
+        # Continue processing or finish
+        if state['current_index'] < len(self._all_releases):
+            return True  # Continue on next idle
+        else:
+            # Filtering complete - verify query hasn't changed
+            if hasattr(self, '_current_query') and state['original_query'] == self._current_query:
+                self._apply_search_results(state['filtered_releases'], state['original_query'])
+            self._filter_idle_id = 0
+            self._current_filter_state = None
+            return False
+
+    def _apply_search_results(self, filtered_releases, query):
+        """Apply search results to the UI efficiently."""
+        # Handle empty results immediately
+        if not filtered_releases:
+            if query:
+                self._show_empty(
+                    title=f"No Results for '{query}'",
+                    description="Try a different search term."
+                )
+            else:
+                self._show_empty(
+                    title="No Music Found",
+                    description=f"No audio files found in {self._music_dir}"
+                )
+            return
+
+        # For large result sets, add items in batches to prevent UI freezing
+        if len(filtered_releases) > 100:
+            self._start_batched_result_addition(filtered_releases)
+        else:
+            # For small result sets, add all at once
+            for release in filtered_releases:
+                self.add_item(release)
+            self._show_results()
+
+    def _start_batched_result_addition(self, filtered_releases):
+        """Start batched addition of search results for large result sets."""
+        self._current_result_state = {
+            'filtered_releases': filtered_releases,
+            'current_index': 0,
+            'batch_size': 50  # Add 50 items at a time
+        }
+
+        # Start adding results immediately
+        self._add_result_batch()
+
+    def _add_result_batch(self):
+        """Add the next batch of search results."""
+        # Check if result state was cleared (search changed)
+        if not hasattr(self, '_current_result_state') or self._current_result_state is None:
+            return False
+
+        state = self._current_result_state
+
+        # Validate bounds
+        if state['current_index'] >= len(state['filtered_releases']):
+            self._current_result_state = None
+            return False
+
+        end_index = min(state['current_index'] + state['batch_size'], len(state['filtered_releases']))
+
+        # Add this batch of items
+        for i in range(state['current_index'], end_index):
+            self.add_item(state['filtered_releases'][i])
+
+        # Show results after first batch
+        if state['current_index'] == 0:
+            self._show_results()
+
+        state['current_index'] = end_index
+
+        # Continue processing or finish
+        if state['current_index'] < len(state['filtered_releases']):
+            # Schedule next batch on idle
+            GLib.idle_add(self._add_result_batch)
+            return False  # Don't continue this idle callback
+        else:
+            # All results added
+            self._current_result_state = None
+            return False
+
+    def on_item_activated(self, item):
+        """Open release directory with amberol."""
+        if item and item.path:
             launcher = Gio.SubprocessLauncher.new(
                 Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP
                 | Gio.SubprocessFlags.STDERR_PIPE
@@ -462,417 +724,333 @@ class MainWindow(Adw.ApplicationWindow):
             )
             # Launch process detached from our window
             try:
-                launcher.spawnv(["amberol", folder])
+                launcher.spawnv(["amberol", item.path])
+                # Close the launcher after successful launch
+                GLib.timeout_add(100, self.close)
             except GLib.Error as e:
                 print(f"Failed to launch Amberol: {e.message}")
+                # Fallback to xdg-open if amberol is not available
+                try:
+                    launcher.spawnv(["xdg-open", item.path])
+                    GLib.timeout_add(100, self.close)
+                except GLib.Error as e:
+                    print(f"Error opening music directory: {e.message}")
 
-    def do_close_request(self):
-        self.get_application().quit()
-        return True
-
-    def _on_search_changed(self, search):
-        # Move to idle callback to avoid blocking UI
-        GLib.idle_add(self.search_filter.set_search_text, search.get_text())
-
-    def _on_key_press(self, controller, keyval, keycode, state):
-        # Check if the pressed key is the Escape key
-        if keyval == Gdk.KEY_Escape:
-            self.search.grab_focus()
-            return True  # Indicate that the event was handled
-        return False  # Let other handlers process the event
-
-    def has_releases(self):
-        return self.albums_model.get_n_items() > 0
-
-    def start_loading(self):
-        self.progress.set_visible(True)
-        self.progress.set_fraction(0)
-        # Only show loading page if we have no releases
-        if not self.has_releases():
-            self.stack.set_visible_child_name("loading")
-
-    def stop_loading(self):
-        self.progress.set_visible(False)
-        if self.has_releases():
-            self.stack.set_visible_child_name("albums")
-        else:
-            # Show loading page if we still have no releases
-            self.stack.set_visible_child_name("loading")
-
-    def update_progress(self, current: int, total: int):
-        self.progress.set_fraction(current / total if total > 0 else 0)
-
-
-class MusicPlayer(Adw.Application):
-    def __init__(self):
-        super().__init__(application_id="org.knoopx.music")
-        self.window = None  # Add window reference
-        # Get XDG_DATA_HOME or fallback to ~/.local/share
-        data_home = os.environ.get(
-            "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
+    # ListView methods
+    def setup_list_item(self, list_item):
+        """Setup UI for each release item."""
+        # Create main container
+        main_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+            margin_top=8,
+            margin_bottom=8,
+            margin_start=12,
+            margin_end=12
         )
-        app_data_dir = os.path.join(data_home, "music")
 
-        # Ensure directory exists
-        os.makedirs(app_data_dir, exist_ok=True)
-
-        self.db_file = os.path.join(app_data_dir, "releases.db")
-        self.db = MusicDatabase(self.db_file)
-        self.scanner = Scanner()
-        self.all_releases: Dict[str, Release] = (
-            {}
-        )  # Store all releases here, keyed by directory path
-        # Use a ThreadPoolExecutor for parallel scanning
-        self.executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=os.cpu_count() or 4
+        # Release title
+        title_label = Gtk.Label(
+            halign=Gtk.Align.START,
+            xalign=0,
+            wrap=False,
+            single_line_mode=True,
+            ellipsize=Pango.EllipsizeMode.END
         )
-        # Add the reveal action
-        self.add_action(Gio.SimpleAction.new("reveal_in_file_explorer", None))
-        self.lookup_action("reveal_in_file_explorer").connect(
-            "activate", self.on_reveal_in_file_explorer
+        title_label.add_css_class("heading")
+
+        # Track count and path info
+        info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        track_count_label = Gtk.Label(
+            halign=Gtk.Align.START,
+            xalign=0
         )
-        self.last_scan_time = 0
-        self.cached_dirs = {}  # Store cached directory timestamps
-        self.cache_lock = threading.Lock()  # Add lock for thread safety
-        self._save_timer = None  # Add timer for debounced saving
-        self._pending_save = False
-        self._shutdown_event = threading.Event()
-        self._active_threads = []
+        track_count_label.add_css_class("dim-label")
+        track_count_label.add_css_class("caption")
 
-    def load_cached_data(self):
-        """Load releases from database"""
-        window = self.get_active_window()
-        window.start_loading()
+        info_box.append(track_count_label)
 
-        def load_cache_thread():
+        main_box.append(title_label)
+        main_box.append(info_box)
+
+        list_item.set_child(main_box)
+
+    def bind_list_item(self, list_item, item):
+        """Bind release data to list item."""
+        if not item:
+            return
+
+        main_box = list_item.get_child()
+        if not main_box:
+            return
+
+        title_label = main_box.get_first_child()
+        if not title_label:
+            return
+
+        info_box = title_label.get_next_sibling()
+        if not info_box:
+            return
+
+        track_count_label = info_box.get_first_child()
+        if not track_count_label:
+            return
+
+        # Set content efficiently
+        title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
+        track_text = f"{item.track_count} track{'s' if item.track_count != 1 else ''}"
+        track_count_label.set_text(track_text)
+
+    # Context menu support
+    def get_context_menu_actions(self) -> dict:
+        """Return context menu actions for releases."""
+        return {
+            "open_release": "on_open_release_action",
+            "reveal_in_files": "on_reveal_in_files_action",
+            "trash_release": "on_trash_release_action"
+        }
+
+    def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
+        """Return context menu model for releases."""
+        if not item:
+            return None
+
+        menu_model = Gio.Menu.new()
+        menu_model.append("Open with Amberol", "context.open_release")
+        menu_model.append("Reveal in Files", "context.reveal_in_files")
+        menu_model.append("Move to Trash", "context.trash_release")
+        return menu_model
+
+    # Context menu action handlers
+    def on_open_release_action(self, action, param):
+        """Open release with amberol (same as default action)."""
+        selected_item = self.get_selected_item()
+        if selected_item:
+            self.on_item_activated(selected_item)
+
+    def on_reveal_in_files_action(self, action, param):
+        """Reveal release directory in file manager."""
+        selected_item = self.get_selected_item()
+        if selected_item and selected_item.path:
+            launcher = Gio.SubprocessLauncher.new(
+                Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP
+                | Gio.SubprocessFlags.STDERR_PIPE
+                | Gio.SubprocessFlags.STDOUT_PIPE
+            )
             try:
-                # Load metadata
-                self.last_scan_time = self.db.get_last_scan_time()
-                self.cached_dirs = self.db.get_cached_dirs()
+                # Use xdg-open to open the directory in the file manager
+                launcher.spawnv(["xdg-open", selected_item.path])
+            except GLib.Error as e:
+                print(f"Error revealing directory: {e.message}")
 
-                # Get total count for progress tracking
-                total_count = self.db.get_release_count()
-                current_count = 0
+    def on_trash_release_action(self, action, param):
+        """Move release directory to trash."""
+        selected_item = self.get_selected_item()
+        if not selected_item or not selected_item.path:
+            return
 
-                all_releases = []
+        # Create confirmation dialog
+        dialog = Adw.MessageDialog.new(
+            self,
+            f"Move '{selected_item.title}' to Trash?"
+        )
+        dialog.set_body(f"This will move the entire directory and all its contents to trash.\n\nPath: {selected_item.path}")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("trash", "Move to Trash")
+        dialog.set_response_appearance("trash", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
 
-                def on_release_loaded(release):
-                    nonlocal current_count
-                    self.all_releases[release.path] = release
-                    all_releases.append(release)
-                    current_count += 1
+        dialog.connect("response", self._on_trash_dialog_response, selected_item)
+        dialog.present()
 
-                # Load all releases in background
-                self.db.load_releases_individually(on_release_loaded)
+    def _on_trash_dialog_response(self, dialog, response, item):
+        """Handle trash confirmation dialog response."""
+        if response == "trash":
+            try:
+                # Use gio trash command to move to trash
+                file = Gio.File.new_for_path(item.path)
+                file.trash(None)
 
-                # Sort all releases in background thread to avoid blocking main thread
-                all_releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-
-                # Update UI once with pre-sorted releases
-                GLib.idle_add(self._process_release_batch, all_releases)
-                GLib.idle_add(window.update_progress, current_count, total_count)
+                # Remove from our list and refresh
+                self._all_releases = [r for r in self._all_releases if r.path != item.path]
+                self.on_search_changed(self.get_search_text())
 
             except Exception as e:
-                print(f"Error loading from database: {e}")
-            finally:
-                # Always start library scan after cache load attempt
-                GLib.idle_add(self.on_cache_loaded)
+                error_dialog = Adw.MessageDialog.new(
+                    self,
+                    "Error Moving to Trash"
+                )
+                error_dialog.set_body(f"Could not move '{item.title}' to trash:\n{str(e)}")
+                error_dialog.add_response("ok", "OK")
+                error_dialog.set_default_response("ok")
+                error_dialog.present()
 
-        thread = threading.Thread(target=load_cache_thread, daemon=True)
-        self._active_threads.append(thread)
-        thread.start()
+    # Status page customization
+    def get_empty_icon(self) -> str:
+        return "multimedia-player-symbolic"
 
-    def _process_release_batch(self, releases):
-        """Process a batch of releases for UI update"""
-        window = self.get_active_window()
-        if window:
-            with self.cache_lock:
-                model = window.albums_model
+    def get_loading_icon(self) -> str:
+        return "multimedia-player-symbolic"
 
-                # Releases are already sorted in the background thread
-                # Clear the model and add all releases at once for maximum efficiency
-                model.remove_all()
-                model.splice(0, 0, releases)
+    def get_empty_title(self) -> str:
+        return "No Music Found"
 
-                # Switch to albums view as soon as we have releases
-                if model.get_n_items() > 0:
-                    window.stack.set_visible_child_name("albums")
+    def get_empty_description(self) -> str:
+        return "Add some music to your Music directory and search for it here."
 
-        # Schedule a debounced cache save
-        self.schedule_cache_save()
-        return False
+    def _initialize_scanning(self):
+        """Initialize the UI for progressive scanning."""
+        self._all_releases = []
+        self._scan_generator = None
+        self._scan_cancelled = False  # Reset cancellation flag
+        self._cache_loaded = False   # Reset cache flag
+        self.remove_all_items()
+        self.set_loading(True)
 
-    def _update_sorted_releases(self, sorted_releases):
-        """Update the UI with sorted releases"""
-        window = self.get_active_window()
-        if window:
-            with self.cache_lock:
-                model = window.albums_model
-                # Clear and add all sorted releases at once
-                model.remove_all()
-                model.splice(0, 0, sorted_releases)
-        return False
+    def _continue_scanning(self):
+        """Continue incremental scanning - called on idle to prevent blocking."""
+        if (not hasattr(self, '_scan_generator') or
+            self._scan_generator is None or
+            self._scan_cancelled):
+            return False  # Stop the idle callback
 
-    def on_cache_loaded(self):
-        """Callback after cache is loaded to start scanning."""
-        self.load_library()
-        return False
+        try:
+            # Get next release or control yield
+            result = next(self._scan_generator)
+
+            # If we got a new release, add it immediately
+            if result is not None:
+                self._add_single_release(result)
+
+            # Continue scanning on next idle
+            return True
+
+        except StopIteration:
+            # Scanning complete
+            self._finalize_scanning_complete()
+            return False  # Stop the idle callback
+
+    def _add_single_release(self, release):
+        """Add a single release to the UI immediately."""
+        # Check if we already have this release path to prevent duplicates
+        existing_paths = {r.path for r in self._all_releases}
+        if release.path in existing_paths:
+            return  # Skip duplicate
+
+        # Add to our list (we'll sort later)
+        self._all_releases.append(release)
+
+        # Check if there's an active search query
+        current_query = self.get_search_text().strip()
+
+        # Only add to UI if it matches current search (or no search active)
+        should_show = not current_query or current_query.lower() in release.title.lower()
+        if should_show:
+            self.add_item(release)
+
+        # Clear loading and show results on first item (regardless of search match)
+        # This ensures we switch away from loading state once scanning finds anything
+        if len(self._all_releases) == 1:
+            self.set_loading(False)  # This switches from loading to results view
+
+        # If this is the first item that matches search, make sure results are shown
+        if should_show and self._item_store.get_n_items() == 1:
+            self._show_results()
+
+    def _refresh_ui_with_sorted_releases(self):
+        """Refresh the UI with sorted releases."""
+        # Clear current UI items
+        self.remove_all_items()
+
+        # Check if there's an active search query
+        current_query = self.get_search_text().strip()
+
+        if not current_query:
+            # No search active - add all releases (use batched addition for large collections)
+            if len(self._all_releases) > 100:
+                self._start_batched_result_addition(self._all_releases)
+            else:
+                for release in self._all_releases:
+                    self.add_item(release)
+                if self._all_releases:
+                    self._show_results()
+        else:
+            # Search is active - filter and add matching releases
+            query_lower = current_query.lower()
+            if len(self._all_releases) < 100:
+                # Small collection - filter directly
+                filtered_releases = [
+                    release for release in self._all_releases
+                    if query_lower in release.title.lower()
+                ]
+                self._apply_search_results(filtered_releases, current_query)
+            else:
+                # Large collection - use batched filtering
+                self._start_batched_filtering(query_lower, current_query)
+
+    def _finalize_scanning_complete(self):
+        """Called when scanning is completely finished."""
+        # Only set loading to false if we have no releases yet
+        # (it should already be false if we found any releases)
+        if not self._all_releases:
+            self.set_loading(False)
+            self._show_empty(
+                title="No Music Found",
+                description=f"No audio files found in {self._music_dir}"
+            )
+        else:
+            # Sort releases alphabetically and refresh the UI
+            self._all_releases.sort(key=lambda r: r.title.lower())
+            self._refresh_ui_with_sorted_releases()
+
+            # Save scan results to cache for faster next launch
+            threading.Thread(target=self._save_to_cache, daemon=True).start()
+
+    def on_close_request(self):
+        """Handle window close request - cancel any ongoing scanning."""
+        self._scan_cancelled = True
+        self._clear_all_operations()
+        return False  # Allow window to close
+
+    def _clear_all_operations(self):
+        """Clear all ongoing operations to prevent race conditions."""
+        # Cancel any pending search operations
+        if hasattr(self, '_search_idle_id') and self._search_idle_id > 0:
+            GLib.source_remove(self._search_idle_id)
+            self._search_idle_id = 0
+        if hasattr(self, '_filter_idle_id') and self._filter_idle_id > 0:
+            GLib.source_remove(self._filter_idle_id)
+            self._filter_idle_id = 0
+
+        # Clear filter and result states to prevent stale operations
+        self._current_filter_state = None
+        self._current_result_state = None
+        self._current_query = ""
+
+        # Reset flags
+        self._scan_cancelled = True
+        self._cache_loaded = False
+        self._background_scan_running = False
+
+class MusicApplication(Adw.Application):
+    """Main application class."""
+
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
 
     def do_activate(self):
-        # Only create one window
-        if not self.window:
-            self.window = MainWindow(application=self)
-        self.window.present()
-        self.load_cached_data()
+        """Activate the application."""
+        window = MusicWindow(application=self)
+        window.present()
 
-    def load_library(self):
-        window = self.get_active_window()
-        window.start_loading()
-        if not self.all_releases:
-            self.all_releases = {}
-            window.albums_model.remove_all()
 
-        def scan_thread():
-            try:
-                music_dir = MUSIC_DIR
-                new_dirs = []
-                cached_dirs = []
-
-                # Check shutdown flag early
-                if self._shutdown_event.is_set():
-                    return
-
-                # First pass to categorize directories
-                try:
-                    for root, dirs, files in os.walk(music_dir, followlinks=True):
-                        # Check shutdown flag during walk
-                        if self._shutdown_event.is_set():
-                            return
-
-                        # Resolve real path if it's a symlink
-                        real_root = os.path.realpath(root)
-
-                        if any(f.lower().endswith((".mp3", ".flac")) for f in files):
-                            dir_mtime = os.path.getmtime(real_root)
-                            cached_time = self.cached_dirs.get(real_root, 0)
-
-                            if real_root not in self.cached_dirs or dir_mtime > cached_time:
-                                new_dirs.append(real_root)
-                            else:
-                                cached_dirs.append(real_root)
-                except Exception as e:
-                    print(f"Error walking music directory {music_dir}: {e}")
-                    GLib.idle_add(self.on_scan_complete)
-                    return
-
-                total_directories = len(new_dirs) + len(cached_dirs)
-                if total_directories == 0:
-                    print("No music directories found.")
-                    GLib.idle_add(self.on_scan_complete)
-                    return
-
-                print(
-                    f"Found {len(new_dirs)} new/modified and {len(cached_dirs)} cached directories"
-                )
-
-                # Process new/modified directories first
-                processed_directories = 0
-
-                # Function to process directories with immediate display
-                def process_directories(directories):
-                    nonlocal processed_directories
-
-                    futures = {
-                        self.executor.submit(
-                            self.scanner.scan_single_directory, dir_path
-                        ): dir_path
-                        for dir_path in directories
-                    }
-
-                    for future in concurrent.futures.as_completed(futures):
-                        # Check shutdown flag during processing
-                        if self._shutdown_event.is_set():
-                            for f in futures:
-                                f.cancel()
-                            return
-
-                        dir_path = futures[future]
-                        processed_directories += 1
-                        try:
-                            releases_in_dir = future.result()
-                            for release in releases_in_dir:
-                                key = (
-                                    os.path.dirname(release.tracks[0].path)
-                                    if release.tracks
-                                    else None
-                                )
-                                if key and (key not in self.all_releases):
-                                    self.all_releases[key] = release
-                                    self.cached_dirs[key] = os.path.getmtime(key)
-
-                                    # Display release immediately
-                                    GLib.idle_add(self.on_release_found, release)
-
-                        except Exception as exc:
-                            print(f"Error scanning directory {dir_path}: {exc}")
-
-                        GLib.idle_add(
-                            window.update_progress,
-                            processed_directories,
-                            total_directories,
-                        )
-
-                # Process new directories first
-                process_directories(new_dirs)
-                # Then process cached directories
-                process_directories(cached_dirs)
-
-                GLib.idle_add(
-                    window.update_progress, total_directories, total_directories
-                )
-                GLib.idle_add(self.on_scan_complete)
-            finally:
-                GLib.idle_add(window.stop_loading)
-                if thread in self._active_threads:
-                    self._active_threads.remove(thread)
-
-        thread = threading.Thread(target=scan_thread, daemon=True)
-        self._active_threads.append(thread)
-        thread.start()
-
-    def on_release_found(self, release):
-        """Display a single release immediately as it's found."""
-        window = self.get_active_window()
-        if window:
-            with self.cache_lock:
-                # Simply append to the model without sorting for better performance
-                # Sorting will happen when scanning is complete
-                model = window.albums_model
-                model.splice(model.get_n_items(), 0, [release])
-
-                # Switch to albums view as soon as we have the first release
-                if model.get_n_items() == 1:
-                    window.stack.set_visible_child_name("albums")
-
-        # Schedule a debounced cache save
-        self.schedule_cache_save()
-        return False
-
-    def schedule_cache_save(self):
-        """Schedule a debounced cache save operation"""
-        if self._save_timer:
-            GLib.source_remove(self._save_timer)
-        self._save_timer = GLib.timeout_add_seconds(5, self._do_save_cache)
-        self._pending_save = True
-
-    def _do_save_cache(self):
-        """Save cache using SQLite database for better performance"""
-        if not self._pending_save:
-            return False
-
-        def save_thread():
-            try:
-                with self.cache_lock:
-                    # Create a static copy of the data we want to save
-                    releases_to_save = list(self.all_releases.values())
-                    cached_dirs_copy = dict(self.cached_dirs)
-
-                    # Save releases one by one instead of in batches
-                    for release in releases_to_save:
-                        self.db.save_release(release)
-
-                    # Update metadata
-                    self.db.set_last_scan_time(time.time())
-                    self.db.set_cached_dirs(cached_dirs_copy)
-
-                    self._pending_save = False
-
-            except Exception as e:
-                print(f"Error saving to database: {e}")
-
-        thread = threading.Thread(target=save_thread, daemon=True)
-        thread.start()
-        return False
-
-    def save_to_cache(self):
-        """Schedule an immediate cache save"""
-        self.schedule_cache_save()
-
-    def on_scan_complete(self):
-        """Signals the end of the scanning process."""
-        window = self.get_active_window()
-
-        # Sort all releases after scanning is complete
-        if window:
-            with self.cache_lock:
-                model = window.albums_model
-                if model.get_n_items() > 0:
-                    # Get all releases from the model
-                    all_releases = []
-                    for i in range(model.get_n_items()):
-                        all_releases.append(model.get_item(i))
-
-                    # Sort them in a background thread to avoid blocking UI
-                    def sort_and_update():
-                        try:
-                            all_releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
-                            # Update UI with sorted releases
-                            GLib.idle_add(self._update_sorted_releases, all_releases)
-                        except Exception as e:
-                            print(f"Error sorting releases: {e}")
-
-                    thread = threading.Thread(target=sort_and_update, daemon=True)
-                    thread.start()
-
-        window.stop_loading()
-        print(f"Scan complete. Found {len(self.all_releases)} releases.")
-
-    def on_reveal_in_file_explorer(self, action, parameter):
-        """Reveals the selected release's directory in the file explorer."""
-        window = self.get_active_window()
-        release = window.selected_release
-        if release and release.tracks:
-            folder = os.path.dirname(release.tracks[0].path)
-            try:
-                # Use Gtk.show_uri to open the folder with the default file manager
-                Gtk.show_uri(window, f"file://{folder}", Gdk.CURRENT_TIME)
-            except Exception as e:
-                print(f"Error opening directory {folder}: {e}")
-
-    def quit(self):
-        print("Shutting down threads...")
-        self._shutdown_event.set()
-
-        # First attempt graceful shutdown of executor
-        self.executor.shutdown(wait=False)
-        try:
-            # Final shutdown attempt
-            self.executor.shutdown(wait=True)
-        except Exception as e:
-            print(f"Warning: Error during executor shutdown: {e}")
-
-        # Then handle active threads
-        remaining_threads = []
-        for thread in self._active_threads:
-            if thread.is_alive():
-                try:
-                    thread.join(timeout=1.0)
-                    if thread.is_alive():
-                        remaining_threads.append(thread)
-                except Exception as e:
-                    print(f"Warning: Error joining thread: {e}")
-
-        if remaining_threads:
-            print(f"Warning: {len(remaining_threads)} threads didn't shut down cleanly")
-
-        # Save cache one last time before quitting
-        if self._pending_save:
-            self._do_save_cache()
-
-        super().quit()
+def main():
+    """Entry point."""
+    app = MusicApplication()
+    return app.run(sys.argv)
 
 
 if __name__ == "__main__":
-    Gst.init(None)
-    app = MusicPlayer()
-    app.run(None)
+    main()
