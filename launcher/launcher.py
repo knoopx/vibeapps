@@ -145,6 +145,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_window_map(self, window):
         """Handle when window is mapped (shown)"""
+        # Always grab focus first
         self.search_entry.grab_focus()
 
         # If there's text, select all
@@ -152,11 +153,14 @@ class LauncherWindow(Adw.ApplicationWindow):
         if current_text:
             self.search_entry.select_region(0, -1)
 
-        # Select first visible item
-        first_visible = self.find_next_visible_row(-1, 1)
-        if first_visible:
-            self.list_box.select_row(first_visible)
-            self.scroll_to_row(first_visible)
+        # Ensure we have a proper selection
+        current_selected = self.list_box.get_selected_row()
+        if not current_selected or not current_selected.get_visible():
+            # Select first visible item
+            first_visible = self.find_next_visible_row(-1, 1)
+            if first_visible:
+                self.list_box.select_row(first_visible)
+                self.scroll_to_row(first_visible)
 
     def load_apps(self):
         self.apps = []
@@ -195,7 +199,6 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_search_changed(self, entry):
         search_text = entry.get_text().lower()
-        current_selected = self.list_box.get_selected_row()
 
         # Get visible rows and their relevance scores
         visible_rows = []
@@ -213,20 +216,36 @@ class LauncherWindow(Adw.ApplicationWindow):
         # Sort visible rows by relevance score (highest first), then by app name
         visible_rows.sort(key=lambda x: (-x[1], x[0].app_info.get_name().lower()))
 
+        # Store the first row before reordering
+        first_row_to_select = visible_rows[0][0] if visible_rows else None
+
         # Reorder the rows in the list box
         for i, (row, _) in enumerate(visible_rows):
             # Remove and re-add to move to correct position
             self.list_box.remove(row)
             self.list_box.insert(row, i)
 
-        # If current selection is hidden or no selection, select first visible
-        if not current_selected or not current_selected.get_visible():
-            first_visible = self.find_next_visible_row(-1, 1)
-            if first_visible:
-                self.list_box.select_row(first_visible)
+        # Use idle_add to ensure selection happens after UI updates
+        if first_row_to_select:
+            GLib.idle_add(self._select_row_safe, first_row_to_select)
+        else:
+            # No visible rows, clear selection
+            GLib.idle_add(self.list_box.unselect_all)
+
+    def _select_row_safe(self, row):
+        """Safely select a row, ensuring it's still valid"""
+        try:
+            # Double-check the row is still in the list box
+            if row.get_parent() == self.list_box:
+                self.list_box.select_row(row)
+        except Exception:
+            pass
+        return False  # Don't repeat the idle callback
 
     def on_key_press(self, controller, keyval, keycode, state):
-        if keyval == Gdk.KEY_Up:
+        if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
+            return False  # Let the search entry handle the activation
+        elif keyval == Gdk.KEY_Up:
             self.move_selection(-1)
             return True
         elif keyval == Gdk.KEY_Down:
@@ -239,8 +258,16 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_search_activate(self, entry):
         selected = self.list_box.get_selected_row()
+        search_term = entry.get_text()
+
+        if selected is None:
+            # Emergency fallback: try to find the first visible row
+            first_visible = self.find_next_visible_row(-1, 1)
+            if first_visible is not None:
+                self.list_box.select_row(first_visible)
+                selected = first_visible
+
         if selected:
-            search_term = entry.get_text()
             self.launch_app(selected.app_info, search_term)
         return True
 
@@ -270,6 +297,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def move_selection(self, direction):
         selected = self.list_box.get_selected_row()
+
         start_index = (
             selected.get_index()
             if selected
@@ -279,6 +307,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         )
 
         next_row = self.find_next_visible_row(start_index, direction)
+
         if next_row:
             self.list_box.select_row(next_row)
             self.scroll_to_row(next_row)
@@ -286,21 +315,19 @@ class LauncherWindow(Adw.ApplicationWindow):
     def find_next_visible_row(self, start_index, direction):
         index = start_index + direction
         n_items = self.list_box.observe_children().get_n_items()
+
         while 0 <= index < n_items:
             row = self.list_box.get_row_at_index(index)
             if row and row.get_visible():
                 return row
             index += direction
+
         return None
 
     def launch_app(self, app_info, search_term):
         # Only record launch if search term is provided
         if search_term.strip():
             self.app_history.record_launch(app_info.get_id(), search_term)
-
-        self.search_entry.set_text("")  # Clear search entry
-        self.search_entry.emit("search-changed")  # Update list
-        self.list_box.unselect_all()  # Clear selection
 
         try:
             context = self.get_display().get_app_launch_context()
@@ -335,16 +362,14 @@ class LauncherWindow(Adw.ApplicationWindow):
         # Reload apps
         self.load_apps()
 
-        # Re-apply current search filter
-        search_text = self.search_entry.get_text()
-        if search_text:
-            self.on_search_changed(self.search_entry)
-        else:
-            # Select first visible item
-            first_visible = self.find_next_visible_row(-1, 1)
-            if first_visible:
-                self.list_box.select_row(first_visible)
-                self.scroll_to_row(first_visible)
+        # Select first visible item (since search is now empty, all should be visible)
+        first_visible = self.find_next_visible_row(-1, 1)
+        if first_visible:
+            self.list_box.select_row(first_visible)
+            self.scroll_to_row(first_visible)
+
+        # Ensure focus is on search entry
+        self.search_entry.grab_focus()
 
 
 class Launcher(Adw.Application):
