@@ -28,7 +28,7 @@ class ProcessItem(PickerItem):
     username = GObject.Property(type=str, default="")
     cpu_percent = GObject.Property(type=float, default=0.0)
     memory_percent = GObject.Property(type=float, default=0.0)
-    memory_rss = GObject.Property(type=int, default=0)
+    memory_rss = GObject.Property(type=GObject.TYPE_INT64, default=0)
     status = GObject.Property(type=str, default="")
     create_time = GObject.Property(type=float, default=0.0)
 
@@ -339,7 +339,7 @@ class ProcessManagerWindow(PickerWindow):
         if not selected_item or selected_item.pid == 0:
             return
 
-        self._confirm_and_kill_process(selected_item, signal.SIGKILL, "KILL")
+        self._kill_process(selected_item, signal.SIGKILL, "KILL")
 
     def on_terminate_process_action(self, action, param):
         """Terminate process with SIGTERM."""
@@ -347,7 +347,7 @@ class ProcessManagerWindow(PickerWindow):
         if not selected_item or selected_item.pid == 0:
             return
 
-        self._confirm_and_kill_process(selected_item, signal.SIGTERM, "TERM")
+        self._kill_process(selected_item, signal.SIGTERM, "TERM")
 
     def on_show_details_action(self, action, param):
         """Show process details."""
@@ -369,60 +369,38 @@ class ProcessManagerWindow(PickerWindow):
             clipboard = self.get_clipboard()
             clipboard.set(selected_item.cmdline if selected_item.cmdline else selected_item.name)
 
-    def _confirm_and_kill_process(self, process_item, sig, signal_name):
-        """Show confirmation dialog and kill process."""
+    def _kill_process(self, process_item, sig, signal_name):
+        """Kill process directly without confirmation."""
         # Don't kill our own process
         if process_item.pid == os.getpid():
             return
 
-        dialog = Adw.MessageDialog.new(
-            self,
-            f"Confirm Process {signal_name}"
-        )
+        try:
+            os.kill(process_item.pid, sig)
 
-        dialog.set_body(
-            f"Are you sure you want to send {signal_name} signal to process "
-            f"'{process_item.name}' (PID: {process_item.pid})?\n\n"
-            f"This action cannot be undone."
-        )
+            # Show success toast
+            toast = Adw.Toast.new(f"Sent {signal_name} signal to PID {process_item.pid}")
+            toast.set_timeout(3)
 
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("confirm", f"Send {signal_name}")
-        dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.set_default_response("cancel")
+            # Create a toast overlay if we don't have one
+            if not hasattr(self, '_toast_overlay'):
+                self._toast_overlay = Adw.ToastOverlay()
+                # We'd need to restructure the UI to add this properly
+                # For now, just print the message
+                print(f"Sent {signal_name} signal to PID {process_item.pid}")
 
-        dialog.connect("response", self._on_kill_dialog_response, process_item, sig, signal_name)
-        dialog.present()
+            # Refresh process list after a short delay
+            GLib.timeout_add(500, self._refresh_processes)
 
-    def _on_kill_dialog_response(self, dialog, response, process_item, sig, signal_name):
-        """Handle kill dialog response."""
-        if response == "confirm":
-            try:
-                os.kill(process_item.pid, sig)
-
-                # Show success toast
-                toast = Adw.Toast.new(f"Sent {signal_name} signal to PID {process_item.pid}")
-                toast.set_timeout(3)
-
-                # Create a toast overlay if we don't have one
-                if not hasattr(self, '_toast_overlay'):
-                    self._toast_overlay = Adw.ToastOverlay()
-                    # We'd need to restructure the UI to add this properly
-                    # For now, just print the message
-                    print(f"Sent {signal_name} signal to PID {process_item.pid}")
-
-                # Refresh process list after a short delay
-                GLib.timeout_add(500, self._refresh_processes)
-
-            except (ProcessLookupError, PermissionError) as e:
-                # Show error dialog
-                error_dialog = Adw.MessageDialog.new(
-                    self,
-                    "Failed to Kill Process"
-                )
-                error_dialog.set_body(f"Could not send {signal_name} signal to process: {str(e)}")
-                error_dialog.add_response("close", "Close")
-                error_dialog.present()
+        except (ProcessLookupError, PermissionError) as e:
+            # Show error dialog
+            error_dialog = Adw.MessageDialog.new(
+                self,
+                "Failed to Kill Process"
+            )
+            error_dialog.set_body(f"Could not send {signal_name} signal to process: {str(e)}")
+            error_dialog.add_response("close", "Close")
+            error_dialog.present()
 
     def _refresh_processes(self):
         """Refresh the process list."""
