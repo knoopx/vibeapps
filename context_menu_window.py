@@ -4,6 +4,7 @@ Context menu window that displays actions as a picker-style list.
 """
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
@@ -14,6 +15,7 @@ from typing import Callable, List
 
 class ContextMenuAction(PickerItem):
     """Represents a context menu action."""
+
     __gtype_name__ = "ContextMenuAction"
 
     label = GObject.Property(type=str, default="")
@@ -31,13 +33,16 @@ class ContextMenuWindow(PickerWindow):
     A picker-style context menu window that shows actions as a list.
     """
 
-    def __init__(self, parent_window: Gtk.Window, actions: List[ContextMenuAction], **kwargs):
+    def __init__(
+        self, parent_window: Gtk.Window, actions: List[ContextMenuAction], **kwargs
+    ):
         self._actions = actions
 
         super().__init__(
             title="Actions",
             search_placeholder="Search actions...",
             enable_context_menu=False,  # Don't enable context menu on the context menu
+            window_size=(300, 400),
             **kwargs
         )
 
@@ -71,9 +76,11 @@ class ContextMenuWindow(PickerWindow):
         # Filter and add matching actions
         query_lower = query.lower()
         for action in self._actions:
-            if (not query or
-                query_lower in action.label.lower() or
-                query_lower in action.action_name.lower()):
+            if (
+                not query
+                or query_lower in action.label.lower()
+                or query_lower in action.action_name.lower()
+            ):
                 if action.label.strip():  # Skip separators
                     self._item_store.append(action)
 
@@ -83,7 +90,11 @@ class ContextMenuWindow(PickerWindow):
 
     def on_item_activated(self, item):
         """Execute the selected action and close the menu."""
-        if isinstance(item, ContextMenuAction) and hasattr(item, 'callback') and item.callback:
+        if (
+            isinstance(item, ContextMenuAction)
+            and hasattr(item, "callback")
+            and item.callback
+        ):
             self.close()
             # Execute callback after a short delay to ensure window closes first
             GLib.idle_add(item.callback)
@@ -131,7 +142,7 @@ class ContextMenuWindow(PickerWindow):
         self._search_entry.set_text("")
 
         # Focus on the list view for immediate navigation
-        if hasattr(self, '_list_view'):
+        if hasattr(self, "_list_view"):
             self._list_view.grab_focus()
 
         return False  # Remove from idle queue
