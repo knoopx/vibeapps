@@ -106,7 +106,6 @@ class MainWindow(Adw.ApplicationWindow):
 
             .rounded {
                 border-radius: 6px;
-                overflow: hidden;
             }
 
             .title-box {
@@ -213,7 +212,6 @@ class MainWindow(Adw.ApplicationWindow):
 
             .rounded {
                 border-radius: 6px;
-                overflow: hidden;
             }
 
             .title-box {
@@ -434,7 +432,7 @@ class MainWindow(Adw.ApplicationWindow):
             # Get the release from the box widget (stored during bind)
             if not hasattr(box, 'release'):
                 return
-            
+
             release_item = box.release
             if not release_item:
                 return
@@ -547,37 +545,32 @@ class MusicPlayer(Adw.Application):
         window.start_loading()
 
         def load_cache_thread():
-            batch_size = 500
-            offset = 0
-
             try:
                 # Load metadata
                 self.last_scan_time = self.db.get_last_scan_time()
                 self.cached_dirs = self.db.get_cached_dirs()
 
-                # Load releases in batches
-                while True:
-                    releases_batch, has_more = self.db.load_releases_batch(batch_size, offset)
+                # Get total count for progress tracking
+                total_count = self.db.get_release_count()
+                current_count = 0
 
-                    if not releases_batch:
-                        break
+                all_releases = []
 
-                    # Add to internal cache
-                    for release in releases_batch:
-                        self.all_releases[release.path] = release
+                def on_release_loaded(release):
+                    nonlocal current_count
+                    self.all_releases[release.path] = release
+                    all_releases.append(release)
+                    current_count += 1
 
-                    # Update UI
-                    GLib.idle_add(self._apply_cached_batch, releases_batch)
+                # Load all releases in background
+                self.db.load_releases_individually(on_release_loaded)
 
-                    # Update progress
-                    total_count = self.db.get_release_count()
-                    current_count = offset + len(releases_batch)
-                    GLib.idle_add(window.update_progress, current_count, total_count)
+                # Sort all releases in background thread to avoid blocking main thread
+                all_releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
 
-                    if not has_more:
-                        break
-
-                    offset += batch_size
+                # Update UI once with pre-sorted releases
+                GLib.idle_add(self._process_release_batch, all_releases)
+                GLib.idle_add(window.update_progress, current_count, total_count)
 
             except Exception as e:
                 print(f"Error loading from database: {e}")
@@ -589,19 +582,40 @@ class MusicPlayer(Adw.Application):
         self._active_threads.append(thread)
         thread.start()
 
+    def _process_release_batch(self, releases):
+        """Process a batch of releases for UI update"""
+        window = self.get_active_window()
+        if window:
+            with self.cache_lock:
+                model = window.albums_model
+
+                # Releases are already sorted in the background thread
+                # Clear the model and add all releases at once for maximum efficiency
+                model.remove_all()
+                model.splice(0, 0, releases)
+
+                # Switch to albums view as soon as we have releases
+                if model.get_n_items() > 0:
+                    window.stack.set_visible_child_name("albums")
+
+        # Schedule a debounced cache save
+        self.schedule_cache_save()
+        return False
+
+    def _update_sorted_releases(self, sorted_releases):
+        """Update the UI with sorted releases"""
+        window = self.get_active_window()
+        if window:
+            with self.cache_lock:
+                model = window.albums_model
+                # Clear and add all sorted releases at once
+                model.remove_all()
+                model.splice(0, 0, sorted_releases)
+        return False
+
     def on_cache_loaded(self):
         """Callback after cache is loaded to start scanning."""
         self.load_library()
-        return False
-
-    def _apply_cached_batch(self, releases):
-        """Apply a batch of cached releases to the UI"""
-        window = self.get_active_window()
-        if window and releases:
-            window.albums_model.splice(window.albums_model.get_n_items(), 0, releases)
-            # Only set visible child if this is the first batch
-            if window.stack.get_visible_child_name() != "albums":
-                window.stack.set_visible_child_name("albums")
         return False
 
     def do_activate(self):
@@ -663,12 +677,10 @@ class MusicPlayer(Adw.Application):
 
                 # Process new/modified directories first
                 processed_directories = 0
-                batch_size = 50
-                current_batch = []
 
-                # Function to process directories with progress updates
+                # Function to process directories with immediate display
                 def process_directories(directories):
-                    nonlocal processed_directories, current_batch
+                    nonlocal processed_directories
 
                     futures = {
                         self.executor.submit(
@@ -696,18 +708,10 @@ class MusicPlayer(Adw.Application):
                                 )
                                 if key and (key not in self.all_releases):
                                     self.all_releases[key] = release
-                                    current_batch.append(release)
                                     self.cached_dirs[key] = os.path.getmtime(key)
 
-                                    if len(current_batch) >= batch_size:
-                                        sorted_batch = sorted(
-                                            current_batch,
-                                            key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                                        )
-                                        GLib.idle_add(
-                                            self.on_batch_complete, sorted_batch
-                                        )
-                                        current_batch = []
+                                    # Display release immediately
+                                    GLib.idle_add(self.on_release_found, release)
 
                         except Exception as exc:
                             print(f"Error scanning directory {dir_path}: {exc}")
@@ -723,14 +727,6 @@ class MusicPlayer(Adw.Application):
                 # Then process cached directories
                 process_directories(cached_dirs)
 
-                # Process final batch
-                if current_batch:
-                    sorted_batch = sorted(
-                        current_batch,
-                        key=lambda r: f"{r.artist.lower()}{r.title.lower()}",
-                    )
-                    GLib.idle_add(self.on_batch_complete, sorted_batch)
-
                 GLib.idle_add(
                     window.update_progress, total_directories, total_directories
                 )
@@ -744,25 +740,22 @@ class MusicPlayer(Adw.Application):
         self._active_threads.append(thread)
         thread.start()
 
-    # Modified on_batch_complete to just append the batch
-    def on_batch_complete(self, batch):
-        """Appends a batch of releases to the UI model."""
+    def on_release_found(self, release):
+        """Display a single release immediately as it's found."""
+        window = self.get_active_window()
+        if window:
+            with self.cache_lock:
+                # Simply append to the model without sorting for better performance
+                # Sorting will happen when scanning is complete
+                model = window.albums_model
+                model.splice(model.get_n_items(), 0, [release])
 
-        def update_ui():
-            window = self.get_active_window()
-            if window:
-                with self.cache_lock:  # Protect UI updates
-                    window.albums_model.splice(
-                        window.albums_model.get_n_items(), 0, batch
-                    )
-                    # Switch to albums view as soon as we have any releases
-                    if batch:
-                        window.stack.set_visible_child_name("albums")
-            return False
+                # Switch to albums view as soon as we have the first release
+                if model.get_n_items() == 1:
+                    window.stack.set_visible_child_name("albums")
 
         # Schedule a debounced cache save
         self.schedule_cache_save()
-        GLib.idle_add(update_ui)
         return False
 
     def schedule_cache_save(self):
@@ -784,9 +777,9 @@ class MusicPlayer(Adw.Application):
                     releases_to_save = list(self.all_releases.values())
                     cached_dirs_copy = dict(self.cached_dirs)
 
-                    # Save to database in batches for better performance
-                    if releases_to_save:
-                        self.db.save_releases_batch(releases_to_save)
+                    # Save releases one by one instead of in batches
+                    for release in releases_to_save:
+                        self.db.save_release(release)
 
                     # Update metadata
                     self.db.set_last_scan_time(time.time())
@@ -808,6 +801,29 @@ class MusicPlayer(Adw.Application):
     def on_scan_complete(self):
         """Signals the end of the scanning process."""
         window = self.get_active_window()
+
+        # Sort all releases after scanning is complete
+        if window:
+            with self.cache_lock:
+                model = window.albums_model
+                if model.get_n_items() > 0:
+                    # Get all releases from the model
+                    all_releases = []
+                    for i in range(model.get_n_items()):
+                        all_releases.append(model.get_item(i))
+
+                    # Sort them in a background thread to avoid blocking UI
+                    def sort_and_update():
+                        try:
+                            all_releases.sort(key=lambda r: f"{r.artist.lower()}{r.title.lower()}")
+                            # Update UI with sorted releases
+                            GLib.idle_add(self._update_sorted_releases, all_releases)
+                        except Exception as e:
+                            print(f"Error sorting releases: {e}")
+
+                    thread = threading.Thread(target=sort_and_update, daemon=True)
+                    thread.start()
+
         window.stop_loading()
         print(f"Scan complete. Found {len(self.all_releases)} releases.")
 
@@ -830,8 +846,6 @@ class MusicPlayer(Adw.Application):
         # First attempt graceful shutdown of executor
         self.executor.shutdown(wait=False)
         try:
-            # Clear internal thread references
-            self.executor._threads.clear()
             # Final shutdown attempt
             self.executor.shutdown(wait=True)
         except Exception as e:

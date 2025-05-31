@@ -312,6 +312,61 @@ class MusicDatabase:
 
         return releases, has_more
 
+    def load_releases_individually(self, callback_func, start_offset: int = 0):
+        """Load releases one by one, calling callback for each release."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Load all tracks in a single query for efficiency
+            tracks_by_release = {}
+            cursor.execute("""
+                SELECT path, release_path, artwork_path
+                FROM tracks
+                ORDER BY release_path, path
+            """)
+
+            for track_row in cursor.fetchall():
+                release_path = track_row['release_path']
+                if release_path not in tracks_by_release:
+                    tracks_by_release[release_path] = []
+
+                track = Track(track_row['path'])
+                track.artwork_path = track_row['artwork_path']
+                tracks_by_release[release_path].append(track)
+
+            # Now load releases and assign tracks
+            cursor.execute("""
+                SELECT path, title, artist, year, group_label, starred, tags
+                FROM releases
+                ORDER BY artist, title
+            """)
+
+            current_index = 0
+            for row in cursor:
+                # Skip until we reach the start offset
+                if current_index < start_offset:
+                    current_index += 1
+                    continue
+
+                # Create release object
+                release = Release(row['title'], row['artist'], row['path'], row['year'])
+                release.group = row['group_label']
+                release.starred = bool(row['starred'])
+
+                try:
+                    release.tags = set(json.loads(row['tags'] or '[]'))
+                except json.JSONDecodeError:
+                    release.tags = set()
+
+                # Assign tracks to this release
+                release.tracks = tracks_by_release.get(release.path, [])
+                for track in release.tracks:
+                    track.release = release
+
+                # Call the callback function with the loaded release
+                callback_func(release)
+                current_index += 1
+
     def get_release_count(self) -> int:
         """Get the total number of releases in the database."""
         with self._get_connection() as conn:
