@@ -835,14 +835,13 @@ class MusicWindow(PickerWindow):
             # Launch process detached from our window
             try:
                 launcher.spawnv(["amberol", item.path])
-                # Close the launcher after successful launch
-                GLib.timeout_add(100, self.close)
+                # Keep the music browser open after launching Amberol
             except GLib.Error as e:
                 print(f"Failed to launch Amberol: {e.message}")
                 # Fallback to xdg-open if amberol is not available
                 try:
                     launcher.spawnv(["xdg-open", item.path])
-                    GLib.timeout_add(100, self.close)
+                    # Keep the music browser open after fallback launch
                 except GLib.Error as e:
                     print(f"Error opening music directory: {e.message}")
 
