@@ -657,22 +657,36 @@ class MusicWindow(PickerWindow):
         # Clear UI immediately for responsive feel
         self.remove_all_items()
 
+        # Get star filter state
+        star_filter_active = hasattr(self, '_star_filter_button') and self._star_filter_button.get_starred()
+
         # Handle empty query quickly
         if not query:
+            # Apply star filter if active
+            releases_to_show = self._all_releases
+            if star_filter_active:
+                releases_to_show = [r for r in self._all_releases if r.starred]
+
             # For large collections, use batched addition even for "show all"
-            if len(self._all_releases) > 100:
-                self._start_batched_result_addition(self._all_releases)
+            if len(releases_to_show) > 100:
+                self._start_batched_result_addition(releases_to_show)
             else:
                 # For small collections, add all at once
-                for release in self._all_releases:
+                for release in releases_to_show:
                     self.add_item(release)
-                if self._all_releases:
+                if releases_to_show:
                     self._show_results()
                 else:
-                    self._show_empty(
-                        title="No Music Found",
-                        description=f"No audio files found in {self._music_dir}"
-                    )
+                    if star_filter_active:
+                        self._show_empty(
+                            title="No Starred Music Found",
+                            description="No starred releases match your criteria."
+                        )
+                    else:
+                        self._show_empty(
+                            title="No Music Found",
+                            description=f"No audio files found in {self._music_dir}"
+                        )
             return
 
         # For non-empty queries, filter efficiently
@@ -682,18 +696,20 @@ class MusicWindow(PickerWindow):
         if len(self._all_releases) < 100:
             filtered_releases = [
                 release for release in self._all_releases
-                if query_lower in release.title.lower()
+                if query_lower in release.title.lower() and
+                (not star_filter_active or release.starred)
             ]
             self._apply_search_results(filtered_releases, query)
         else:
             # Use batched filtering for large collections
-            self._start_batched_filtering(query_lower, query)
+            self._start_batched_filtering(query_lower, query, star_filter_active)
 
-    def _start_batched_filtering(self, query_lower, original_query):
+    def _start_batched_filtering(self, query_lower, original_query, star_filter_active=False):
         """Start batched filtering for large collections."""
         self._current_filter_state = {
             'query_lower': query_lower,
             'original_query': original_query,
+            'star_filter_active': star_filter_active,
             'filtered_releases': [],
             'current_index': 0,
             'batch_size': 100  # Smaller batches for better responsiveness
@@ -720,7 +736,8 @@ class MusicWindow(PickerWindow):
         # Process this batch
         for i in range(state['current_index'], end_index):
             release = self._all_releases[i]
-            if state['query_lower'] in release.title.lower():
+            if (state['query_lower'] in release.title.lower() and
+                (not state.get('star_filter_active', False) or release.starred)):
                 state['filtered_releases'].append(release)
 
         state['current_index'] = end_index
@@ -1040,6 +1057,22 @@ class MusicWindow(PickerWindow):
     def get_empty_description(self) -> str:
         return "Add some music to your Music directory and search for it here."
 
+    # Header bar customization
+    def get_header_bar_left_widgets(self) -> list:
+        """Return star filter button for the left side of header bar."""
+        # Create star button for filtering
+        self._star_filter_button = StarButton(starred=False)
+        self._star_filter_button.set_tooltip_text("Show only starred releases")
+        self._star_filter_button.connect('star-toggled', self._on_star_filter_toggled)
+
+        return [self._star_filter_button]
+
+    def _on_star_filter_toggled(self, star_button, starred):
+        """Handle star filter button toggle."""
+        # Re-apply current search with star filter
+        current_query = self.get_search_text()
+        self.on_search_changed(current_query)
+
     def _initialize_scanning(self):
         """Initialize the UI for progressive scanning."""
         self._all_releases = []
@@ -1085,8 +1118,12 @@ class MusicWindow(PickerWindow):
         # Check if there's an active search query
         current_query = self.get_search_text().strip()
 
-        # Only add to UI if it matches current search (or no search active)
-        should_show = not current_query or current_query.lower() in release.title.lower()
+        # Check if star filter is active
+        star_filter_active = hasattr(self, '_star_filter_button') and self._star_filter_button.get_starred()
+
+        # Only add to UI if it matches current search (or no search active) and star filter
+        should_show = (not current_query or current_query.lower() in release.title.lower()) and \
+                      (not star_filter_active or release.starred)
         if should_show:
             self.add_item(release)
 
@@ -1107,14 +1144,21 @@ class MusicWindow(PickerWindow):
         # Check if there's an active search query
         current_query = self.get_search_text().strip()
 
+        # Check if star filter is active
+        star_filter_active = hasattr(self, '_star_filter_button') and self._star_filter_button.get_starred()
+
         if not current_query:
-            # No search active - add all releases (use batched addition for large collections)
-            if len(self._all_releases) > 100:
-                self._start_batched_result_addition(self._all_releases)
+            # No search active - add all releases (filtered by star if needed)
+            releases_to_show = self._all_releases
+            if star_filter_active:
+                releases_to_show = [r for r in self._all_releases if r.starred]
+
+            if len(releases_to_show) > 100:
+                self._start_batched_result_addition(releases_to_show)
             else:
-                for release in self._all_releases:
+                for release in releases_to_show:
                     self.add_item(release)
-                if self._all_releases:
+                if releases_to_show:
                     self._show_results()
         else:
             # Search is active - filter and add matching releases
@@ -1123,12 +1167,13 @@ class MusicWindow(PickerWindow):
                 # Small collection - filter directly
                 filtered_releases = [
                     release for release in self._all_releases
-                    if query_lower in release.title.lower()
+                    if query_lower in release.title.lower() and
+                    (not star_filter_active or release.starred)
                 ]
                 self._apply_search_results(filtered_releases, current_query)
             else:
                 # Large collection - use batched filtering
-                self._start_batched_filtering(query_lower, current_query)
+                self._start_batched_filtering(query_lower, current_query, star_filter_active)
 
     def _finalize_scanning_complete(self):
         """Called when scanning is completely finished."""

@@ -7,6 +7,7 @@ Used by launcher, nix-packages, bookmarks, and other picker-style applications.
 """
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
@@ -17,11 +18,13 @@ from typing import Optional, Any, List, Callable
 
 class PickerItem(GObject.Object):
     """Base class for picker items. Subclasses should define their own properties."""
+
     __gtype_name__ = "PickerItem"
 
 
 class GObjectABCMeta(type(GObject.Object), type(ABC)):
     """Metaclass that combines GObject and ABC metaclasses."""
+
     pass
 
 
@@ -38,14 +41,16 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     - Search debouncing
     """
 
-    def __init__(self,
-                 title: str = "Picker",
-                 search_placeholder: str = "Search...",
-                 window_size: tuple = (500, 900),
-                 search_delay_ms: int = 300,
-                 enable_context_menu: bool = True,
-                 context_menu_shortcut: str = "<Control>j",
-                 **kwargs):
+    def __init__(
+        self,
+        title: str = "Picker",
+        search_placeholder: str = "Search...",
+        window_size: tuple = (500, 900),
+        search_delay_ms: int = 300,
+        enable_context_menu: bool = True,
+        context_menu_shortcut: str = "<Control>j",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         # Configuration
@@ -85,10 +90,11 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         main_box.append(self._header_bar)
 
         self._search_entry = Gtk.SearchEntry(
-            hexpand=True,
-            placeholder_text=self._search_placeholder
+            hexpand=True, placeholder_text=self._search_placeholder
         )
-        self._header_bar.set_title_widget(self._search_entry)
+
+        # Setup header bar widgets (can be overridden by subclasses)
+        self._setup_header_bar()
 
         # Content stack for different states
         self._content_stack = Gtk.Stack()
@@ -104,6 +110,26 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         # Show initial state
         self._content_stack.set_visible_child_name("empty")
 
+    def _setup_header_bar(self):
+        """Setup header bar widgets. Can be overridden by subclasses."""
+        # Setup left widgets (pack_start)
+        left_widgets = self.get_header_bar_left_widgets()
+        for widget in left_widgets:
+            self._header_bar.pack_start(widget)
+
+        # Setup title widget (center)
+        title_widget = self.get_header_bar_title_widget()
+        if title_widget:
+            self._header_bar.set_title_widget(title_widget)
+        else:
+            # Default to search entry
+            self._header_bar.set_title_widget(self._search_entry)
+
+        # Setup right widgets (pack_end)
+        right_widgets = self.get_header_bar_right_widgets()
+        for widget in right_widgets:
+            self._header_bar.pack_end(widget)
+
     def _setup_results_view(self):
         """Setup the main results list view."""
         scrolled_window = Gtk.ScrolledWindow(vexpand=True)
@@ -114,10 +140,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             factory.connect("setup", self._on_list_item_setup)
             factory.connect("bind", self._on_list_item_bind)
 
-            self._list_view = Gtk.ListView(
-                model=self._selection_model,
-                factory=factory
-            )
+            self._list_view = Gtk.ListView(model=self._selection_model, factory=factory)
             self._list_view.set_vexpand(True)
             self._list_view.set_can_focus(True)
             # Enable single-click activation for ListView
@@ -151,13 +174,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Setup loading, empty, and error status pages."""
         # Loading page
         loading_page = Adw.StatusPage(
-            title="Loading...",
-            icon_name=self.get_loading_icon()
+            title="Loading...", icon_name=self.get_loading_icon()
         )
         spinner = Gtk.Spinner(
-            spinning=True,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER
+            spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER
         )
         loading_page.set_child(spinner)
         self._content_stack.add_named(loading_page, "loading")
@@ -166,7 +186,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._empty_page = Adw.StatusPage(
             title=self.get_empty_title(),
             description=self.get_empty_description(),
-            icon_name=self.get_empty_icon()
+            icon_name=self.get_empty_icon(),
         )
         self._content_stack.add_named(self._empty_page, "empty")
 
@@ -174,7 +194,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._error_page = Adw.StatusPage(
             title="An Error Occurred",
             description="Could not load data.",
-            icon_name="dialog-error-symbolic"
+            icon_name="dialog-error-symbolic",
         )
         self._content_stack.add_named(self._error_page, "error")
 
@@ -210,7 +230,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             # ListView activation via keybinding or click
             self._list_view.connect("activate", self._on_list_view_activate)
             # Also handle selection changes
-            self._selection_model.connect("selection-changed", self._on_selection_changed)
+            self._selection_model.connect(
+                "selection-changed", self._on_selection_changed
+            )
         else:
             self._list_box.connect("row-activated", self._on_row_activated)
 
@@ -272,11 +294,18 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
                     def callback():
                         # Find and activate the action in our context action group
                         action_name_clean = action_name.replace("context.", "")
-                        if hasattr(self, '_context_action_group') and self._context_action_group.has_action(action_name_clean):
-                            self._context_action_group.activate_action(action_name_clean, None)
+                        if hasattr(
+                            self, "_context_action_group"
+                        ) and self._context_action_group.has_action(action_name_clean):
+                            self._context_action_group.activate_action(
+                                action_name_clean, None
+                            )
+
                     return callback
 
-                action_obj = ContextMenuAction(label_str, action_str, make_callback(action_str))
+                action_obj = ContextMenuAction(
+                    label_str, action_str, make_callback(action_str)
+                )
                 actions.append(action_obj)
 
         if not actions:
@@ -293,7 +322,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
         context_menu_gesture = Gtk.GestureClick.new()
         context_menu_gesture.set_button(Gdk.BUTTON_SECONDARY)  # Right mouse button
-        context_menu_gesture.connect("pressed", self._on_item_right_click, item, list_item)
+        context_menu_gesture.connect(
+            "pressed", self._on_item_right_click, item, list_item
+        )
         widget.add_controller(context_menu_gesture)
 
     def _on_item_right_click(self, gesture, n_press, x, y, item, list_item=None):
@@ -301,7 +332,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         if n_press == 1:  # Ensure it's a single click
             # Select the item first
             if self.use_list_view():
-                if list_item:  # list_item is available if gesture was on a ListItem's child
+                if (
+                    list_item
+                ):  # list_item is available if gesture was on a ListItem's child
                     position = list_item.get_position()
                     # Ensure the item is selected
                     if self._selection_model.get_selected() != position:
@@ -311,19 +344,27 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
                 # For ListBox, the gesture is on a child of the ListBoxRow.
                 # We need to find the ListBoxRow to select it.
                 row_widget_ancestor = gesture.get_widget()
-                while row_widget_ancestor and not isinstance(row_widget_ancestor, Gtk.ListBoxRow):
+                while row_widget_ancestor and not isinstance(
+                    row_widget_ancestor, Gtk.ListBoxRow
+                ):
                     row_widget_ancestor = row_widget_ancestor.get_parent()
-                if row_widget_ancestor and isinstance(row_widget_ancestor, Gtk.ListBoxRow):
+                if row_widget_ancestor and isinstance(
+                    row_widget_ancestor, Gtk.ListBoxRow
+                ):
                     if self._list_box.get_selected_row() != row_widget_ancestor:
                         self._list_box.select_row(row_widget_ancestor)
 
             # Determine the anchor for the menu
-            anchor_for_menu = gesture.get_widget() # This is the direct widget that received the click
-            if not self.use_list_view():  # It's a ListBox, try to anchor to the ListBoxRow
+            anchor_for_menu = (
+                gesture.get_widget()
+            )  # This is the direct widget that received the click
+            if (
+                not self.use_list_view()
+            ):  # It's a ListBox, try to anchor to the ListBoxRow
                 row_candidate = gesture.get_widget()
                 while row_candidate and not isinstance(row_candidate, Gtk.ListBoxRow):
                     row_candidate = row_candidate.get_parent()
-                if row_candidate: # If a ListBoxRow is found, use it as anchor
+                if row_candidate:  # If a ListBoxRow is found, use it as anchor
                     anchor_for_menu = row_candidate
 
             self.show_context_menu(anchor_widget=anchor_for_menu)
@@ -346,9 +387,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             return
 
         self._search_delay_id = GLib.timeout_add(
-            self._search_delay_ms,
-            self._apply_search,
-            query
+            self._search_delay_ms, self._apply_search, query
         )
 
     def _apply_empty_search(self):
@@ -435,13 +474,19 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             # Give focus to ListView and let it handle navigation natively
             self._list_view.grab_focus()
             # Ensure we have a selection for navigation to work
-            if self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION and self._item_store.get_n_items() > 0:
+            if (
+                self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION
+                and self._item_store.get_n_items() > 0
+            ):
                 self._selection_model.set_selected(0)
         else:
             # Give focus to ListBox and let it handle navigation natively
             self._list_box.grab_focus()
             # Ensure we have a selection for navigation to work
-            if not self._list_box.get_selected_row() and self._list_box.get_first_child():
+            if (
+                not self._list_box.get_selected_row()
+                and self._list_box.get_first_child()
+            ):
                 first_visible = self._find_next_visible_row(-1, 1)
                 if first_visible:
                     self._list_box.select_row(first_visible)
@@ -512,7 +557,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             if first_visible:
                 self._list_box.select_row(first_visible)
 
-    def _show_empty(self, title: Optional[str] = None, description: Optional[str] = None):
+    def _show_empty(
+        self, title: Optional[str] = None, description: Optional[str] = None
+    ):
         """Show empty state."""
         self._is_loading = False
         if title:
@@ -653,6 +700,19 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         """Return description for empty page."""
         return "Type your query in the search bar above."
 
+    # Header bar customization methods (optional)
+    def get_header_bar_left_widgets(self) -> list:
+        """Return a list of widgets to pack on the left side of the header bar."""
+        return []
+
+    def get_header_bar_title_widget(self):
+        """Return the widget to use as the title widget. Return None to use search entry."""
+        return self._search_entry
+
+    def get_header_bar_right_widgets(self) -> list:
+        """Return a list of widgets to pack on the right side of the header bar."""
+        return []
+
     # Methods for ListView approach
     def setup_list_item(self, list_item):
         """Setup UI for a ListView item. Override if using ListView."""
@@ -665,7 +725,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     # Methods for ListBox approach
     def get_row_item(self, row):
         """Get the item associated with a ListBox row. Override if using ListBox."""
-        return getattr(row, 'item', None)
+        return getattr(row, "item", None)
 
     def create_row_widget(self, item):
         """Create widget for a ListBox row. Override if using ListBox."""
