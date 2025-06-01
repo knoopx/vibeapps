@@ -3,7 +3,7 @@
   lib,
   ...
 }: let
-  md2html = pkgs.callPackage ../md2html/md2html.nix {};
+  md2html = pkgs.callPackage ../utils/md2html/md2html.nix {};
 
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "notes";
