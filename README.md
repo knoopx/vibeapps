@@ -155,43 +155,33 @@ Complete example configuration:
 ```nix
 {
   programs.vibeapps = {
-    # Core productivity apps
     notes.enable = true;
     scratchpad.enable = true;
     launcher.enable = true;
-
-    # Media and browsing
+    bookmarks.enable = true;
     music.enable = true;
-    webkit-shell.enable = true;
-
-    # Development tools
     chat.enable = true;
     nix-packages.enable = true;
-
-    # Utilities
-    bookmarks.enable = true;
-    reminder.enable = true;
   };
 }
 ```
 
 After rebuilding your home-manager configuration, all enabled programs will be available in your PATH.
 
-
 # Future Work
 
-* OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
-* Passwords app (libsecret)
-* Niri Windows app
-* Diffusers app
-* Events app
-  * uses evolution-data-server
-  * Search also parses time and appies filters
-  * Uses dateparser to parse natural language
-  * Shows calendar when creating new event
-* Bookmarks v2:
-    * uses its own sqlite database to store bookmarks instead of firefox
-    * built-in bookmarking (just paste link in search entry)
-      * scrapes websites and summarizes it using openai
-      * screenshots it (using firefox)
-      * shows notification after scraping
+- OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
+- Passwords app (libsecret)
+- Niri Windows app
+- Diffusers app
+- Events app
+  - uses evolution-data-server
+  - Search also parses time and appies filters
+  - Uses dateparser to parse natural language
+  - Shows calendar when creating new event
+- Bookmarks v2:
+  - uses its own sqlite database to store bookmarks instead of firefox
+  - built-in bookmarking (just paste link in search entry)
+    - scrapes websites and summarizes it using openai
+    - screenshots it (using firefox)
+    - shows notification after scraping
