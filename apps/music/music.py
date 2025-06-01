@@ -16,6 +16,7 @@ gi.require_version("Pango", "1.0")
 
 from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
 from picker_window import PickerWindow, PickerItem
+from star_button import StarButton
 
 APP_ID = "net.knoopx.music"
 
@@ -29,6 +30,10 @@ CACHE_DIR = Path.home() / ".cache" / "net.knoopx.music"
 CACHE_FILE = CACHE_DIR / "releases_cache.json"
 CACHE_VERSION = 1  # Increment when cache format changes
 
+# Configuration directory for starred releases
+CONFIG_DIR = Path.home() / ".config" / "net.knoopx.music"
+STARRED_FILE = CONFIG_DIR / "starred.json"
+
 
 class ReleaseItem(PickerItem):
     """Represents a music release (album/directory)."""
@@ -37,12 +42,14 @@ class ReleaseItem(PickerItem):
     title = GObject.Property(type=str, default="")
     path = GObject.Property(type=str, default="")
     track_count = GObject.Property(type=int, default=0)
+    starred = GObject.Property(type=bool, default=False)
 
-    def __init__(self, title: str, path: str, track_count: int = 0):
+    def __init__(self, title: str, path: str, track_count: int = 0, starred: bool = False):
         super().__init__()
         self.title = title
         self.path = path
         self.track_count = track_count
+        self.starred = starred
 
 
 class MusicWindow(PickerWindow):
@@ -61,11 +68,30 @@ class MusicWindow(PickerWindow):
         self._current_query = ""  # Track current search query for sync
         self._current_filter_state = None  # Track filter operation state
         self._current_result_state = None  # Track result addition state
+        self._starred_releases = set()  # Store starred release basenames
 
         super().__init__(
             title="Music",
             search_placeholder="Search music...",
             **kwargs
+        )
+
+        # Add CSS for star button styling
+        self._setup_css()
+
+        # Load starred releases
+        self._load_starred_releases()
+
+    def _setup_css(self):
+        """Setup CSS styling for the music window."""
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(StarButton.get_css_style().encode())
+
+        # Apply to the current display
+        Gtk.StyleContext.add_provider_for_display(
+            self.get_display(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
     # Required abstract method implementations
@@ -74,6 +100,72 @@ class MusicWindow(PickerWindow):
 
     def use_list_view(self):
         return True  # Use modern ListView
+
+    def _load_starred_releases(self):
+        """Load starred releases from starred.json."""
+        try:
+            if STARRED_FILE.exists():
+                with open(STARRED_FILE, 'r', encoding='utf-8') as f:
+                    starred_data = json.load(f)
+                    self._starred_releases = set(starred_data.get('starred', []))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Warning: Failed to load starred releases: {e}")
+            self._starred_releases = set()
+
+    def _save_starred_releases(self):
+        """Save starred releases to starred.json."""
+        try:
+            # Ensure config directory exists
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+            starred_data = {
+                'starred': sorted(list(self._starred_releases))
+            }
+
+            # Write starred file atomically
+            temp_file = STARRED_FILE.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(starred_data, f, indent=2, ensure_ascii=False)
+
+            # Atomic rename
+            temp_file.replace(STARRED_FILE)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"Warning: Failed to save starred releases: {e}")
+
+    def _get_release_basename(self, release_path: str) -> str:
+        """Get the basename of a release path."""
+        return Path(release_path).name
+
+    def _is_release_starred(self, release_path: str) -> bool:
+        """Check if a release is starred."""
+        basename = self._get_release_basename(release_path)
+        return basename in self._starred_releases
+
+    def _toggle_release_starred(self, release_path: str):
+        """Toggle the starred status of a release."""
+        basename = self._get_release_basename(release_path)
+        if basename in self._starred_releases:
+            self._starred_releases.remove(basename)
+        else:
+            self._starred_releases.add(basename)
+        self._save_starred_releases()
+
+    def _update_release_starred_status(self, release):
+        """Update the starred status of a release item."""
+        release.starred = self._is_release_starred(release.path)
+
+    def _refresh_single_item(self, item):
+        """Refresh a single item in the UI by triggering a rebind."""
+        if not self.use_list_view():
+            return  # Only implemented for ListView
+
+        # Find the item's position in the store
+        for i in range(self._item_store.get_n_items()):
+            store_item = self._item_store.get_item(i)
+            if store_item and store_item.path == item.path:
+                # Notify the model that this item changed
+                self._item_store.items_changed(i, 1, 1)
+                break
 
     def load_initial_data(self):
         """Scan music directory for releases, using cache if available."""
@@ -165,7 +257,8 @@ class MusicWindow(PickerWindow):
                             new_release = ReleaseItem(
                                 title=release_title,
                                 path=path_str,
-                                track_count=len(audio_files)
+                                track_count=len(audio_files),
+                                starred=self._is_release_starred(path_str)
                             )
                             releases_found += 1
                             yield new_release
@@ -334,7 +427,8 @@ class MusicWindow(PickerWindow):
                     release = ReleaseItem(
                         title=release_data['title'],
                         path=release_data['path'],
-                        track_count=release_data['track_count']
+                        track_count=release_data['track_count'],
+                        starred=self._is_release_starred(release_data['path'])
                     )
                     batch_releases.append(release)
 
@@ -510,7 +604,8 @@ class MusicWindow(PickerWindow):
                         new_release = ReleaseItem(
                             title=release_title,
                             path=path_str,
-                            track_count=len(audio_files)
+                            track_count=len(audio_files),
+                            starred=self._is_release_starred(path_str)
                         )
                         new_releases.append(new_release)
 
@@ -739,12 +834,24 @@ class MusicWindow(PickerWindow):
         """Setup UI for each release item."""
         # Create main container
         main_box = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=2,
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
             margin_top=8,
             margin_bottom=8,
             margin_start=12,
             margin_end=12
+        )
+
+        # Star button
+        star_button = StarButton(starred=False)
+        star_button.connect('star-toggled', self._on_star_button_toggled)
+        main_box.append(star_button)
+
+        # Content box for title and info
+        content_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+            hexpand=True
         )
 
         # Release title
@@ -769,8 +876,9 @@ class MusicWindow(PickerWindow):
 
         info_box.append(track_count_label)
 
-        main_box.append(title_label)
-        main_box.append(info_box)
+        content_box.append(title_label)
+        content_box.append(info_box)
+        main_box.append(content_box)
 
         list_item.set_child(main_box)
 
@@ -783,17 +891,35 @@ class MusicWindow(PickerWindow):
         if not main_box:
             return
 
-        title_label = main_box.get_first_child()
+        # Get star button (first child)
+        star_button = main_box.get_first_child()
+        if not star_button:
+            return
+
+        # Get content box (second child)
+        content_box = star_button.get_next_sibling()
+        if not content_box:
+            return
+
+        # Get title label (first child of content box)
+        title_label = content_box.get_first_child()
         if not title_label:
             return
 
+        # Get info box (second child of content box)
         info_box = title_label.get_next_sibling()
         if not info_box:
             return
 
+        # Get track count label (first child of info box)
         track_count_label = info_box.get_first_child()
         if not track_count_label:
             return
+
+        # Update star button state and connect to item
+        star_button.set_starred(item.starred)
+        # Store item reference on the button for the toggle handler
+        star_button.item = item
 
         # Set content efficiently
         title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
@@ -804,6 +930,7 @@ class MusicWindow(PickerWindow):
     def get_context_menu_actions(self) -> dict:
         """Return context menu actions for releases."""
         return {
+            "toggle_star": "on_toggle_star_action",
             "open_release": "on_open_release_action",
             "reveal_in_files": "on_reveal_in_files_action",
             "trash_release": "on_trash_release_action"
@@ -815,12 +942,27 @@ class MusicWindow(PickerWindow):
             return None
 
         menu_model = Gio.Menu.new()
+
+        # Star/Unstar action
+        star_label = "Unstar" if item.starred else "Star"
+        menu_model.append(star_label, "context.toggle_star")
+
         menu_model.append("Open with Amberol", "context.open_release")
         menu_model.append("Reveal in Files", "context.reveal_in_files")
         menu_model.append("Move to Trash", "context.trash_release")
         return menu_model
 
     # Context menu action handlers
+    def on_toggle_star_action(self, action, param):
+        """Toggle star status for the selected release."""
+        selected_item = self.get_selected_item()
+        if selected_item:
+            self._toggle_release_starred(selected_item.path)
+            # Update the item's starred status
+            selected_item.starred = self._is_release_starred(selected_item.path)
+            # Refresh the UI to show the updated star
+            self._refresh_single_item(selected_item)
+
     def on_open_release_action(self, action, param):
         """Open release with amberol (same as default action)."""
         selected_item = self.get_selected_item()
@@ -1031,6 +1173,22 @@ class MusicWindow(PickerWindow):
         self._scan_cancelled = True
         self._cache_loaded = False
         self._background_scan_running = False
+
+    def _on_star_button_toggled(self, star_button, starred):
+        """Handle star button toggle events from the UI."""
+        # Get the item reference stored on the button
+        item = getattr(star_button, 'item', None)
+        if not item:
+            return
+
+        # Toggle the release starred status
+        self._toggle_release_starred(item.path)
+        # Update the item's starred property
+        item.starred = self._is_release_starred(item.path)
+
+        # Ensure button state matches the actual starred state
+        # (in case there was any discrepancy)
+        star_button.set_starred(item.starred)
 
 class MusicApplication(Adw.Application):
     """Main application class."""

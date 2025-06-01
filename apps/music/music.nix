@@ -10,6 +10,7 @@
       cp ${./music.py} $out/music.py
       cp ${../picker_window.py} $out/picker_window.py
       cp ${../context_menu_window.py} $out/context_menu_window.py
+      cp ${../star_button.py} $out/star_button.py
     '';
     pyproject = false;
 
@@ -38,6 +39,7 @@
       mkdir -p $out/bin $out/lib/python
       cp $src/picker_window.py $out/lib/python/
       cp $src/context_menu_window.py $out/lib/python/
+      cp $src/star_button.py $out/lib/python/
       cp $src/music.py $out/bin/music
       chmod +x $out/bin/music
     '';
