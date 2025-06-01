@@ -964,7 +964,7 @@ class MusicWindow(PickerWindow):
         return {
             "toggle_star": "on_toggle_star_action",
             "open_release": "on_open_release_action",
-            "reveal_in_files": "on_reveal_in_files_action",
+            "reveal": "on_reveal_action",
             "trash_release": "on_trash_release_action"
         }
 
@@ -980,7 +980,7 @@ class MusicWindow(PickerWindow):
         menu_model.append(star_label, "context.toggle_star")
 
         menu_model.append("Open with Amberol", "context.open_release")
-        menu_model.append("Reveal in Files", "context.reveal_in_files")
+        menu_model.append("Reveal in Files", "context.reveal")
         menu_model.append("Move to Trash", "context.trash_release")
         return menu_model
 
@@ -1001,7 +1001,7 @@ class MusicWindow(PickerWindow):
         if selected_item:
             self.on_item_activated(selected_item)
 
-    def on_reveal_in_files_action(self, action, param):
+    def on_reveal_action(self, action, param):
         """Reveal release directory in file manager."""
         selected_item = self.get_selected_item()
         if selected_item and selected_item.path:
