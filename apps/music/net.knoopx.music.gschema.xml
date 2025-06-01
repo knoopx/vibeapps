@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="net.knoopx.music" path="/net/knoopx/music/">
+    <key name="starred-filter-active" type="b">
+      <default>false</default>
+      <summary>Starred filter state</summary>
+      <description>Whether the starred filter is active or not</description>
+    </key>
+  </schema>
+</schemalist>

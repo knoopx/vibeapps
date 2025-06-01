@@ -8,6 +8,7 @@
     src = pkgs.runCommand "music-src" {} ''
       mkdir -p $out
       cp ${./music.py} $out/music.py
+      cp ${./net.knoopx.music.gschema.xml} $out/net.knoopx.music.gschema.xml
       cp ${../picker_window.py} $out/picker_window.py
       cp ${../context_menu_window.py} $out/context_menu_window.py
       cp ${../star_button.py} $out/star_button.py
@@ -21,6 +22,7 @@
 
     buildInputs = with pkgs; [
       libadwaita
+      glib # for glib-compile-schemas
       pkgs.gst_all_1.gstreamer
       pkgs.gst_all_1.gst-plugins-base
       pkgs.gst_all_1.gst-plugins-good
@@ -42,6 +44,13 @@
       cp $src/star_button.py $out/lib/python/
       cp $src/music.py $out/bin/music
       chmod +x $out/bin/music
+    '';
+
+    postInstall = ''
+      # Install schema
+      mkdir -p $out/share/glib-2.0/schemas
+      install -Dm644 $src/net.knoopx.music.gschema.xml $out/share/glib-2.0/schemas/net.knoopx.music.gschema.xml
+      glib-compile-schemas $out/share/glib-2.0/schemas/
     '';
 
     postFixup = ''

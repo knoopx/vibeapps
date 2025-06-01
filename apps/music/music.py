@@ -70,6 +70,9 @@ class MusicWindow(PickerWindow):
         self._current_result_state = None  # Track result addition state
         self._starred_releases = set()  # Store starred release basenames
 
+        # Initialize dconf settings
+        self._settings = Gio.Settings.new("net.knoopx.music")
+
         super().__init__(
             title="Music",
             search_placeholder="Search music...",
@@ -482,8 +485,21 @@ class MusicWindow(PickerWindow):
         if current_query:
             self.on_search_changed(current_query)
         else:
-            # Use batched loading for UI updates too
-            self._start_batched_result_addition(self._all_releases)
+            # Check if starred filter should be applied from settings
+            starred_filter_active = self._settings.get_boolean("starred-filter-active")
+            if starred_filter_active:
+                # Apply starred filter to initial results
+                starred_releases = [r for r in self._all_releases if r.starred]
+                if starred_releases:
+                    self._start_batched_result_addition(starred_releases)
+                else:
+                    self._show_empty(
+                        title="No Starred Releases",
+                        description="Star some releases to see them here."
+                    )
+            else:
+                # Use batched loading for UI updates too
+                self._start_batched_result_addition(self._all_releases)
 
         # After cache is successfully loaded and UI updated,
         # start a background scan for any updates since the cache was created.
@@ -1059,8 +1075,9 @@ class MusicWindow(PickerWindow):
     # Header bar customization
     def get_header_bar_left_widgets(self) -> list:
         """Return star filter button for the left side of header bar."""
-        # Create star button for filtering
-        self._star_filter_button = StarButton(starred=False)
+        # Create star button for filtering and restore saved state
+        starred_filter_active = self._settings.get_boolean("starred-filter-active")
+        self._star_filter_button = StarButton(starred=starred_filter_active)
         self._star_filter_button.set_tooltip_text("Show only starred releases")
         self._star_filter_button.connect('star-toggled', self._on_star_filter_toggled)
 
@@ -1068,6 +1085,9 @@ class MusicWindow(PickerWindow):
 
     def _on_star_filter_toggled(self, star_button, starred):
         """Handle star filter button toggle."""
+        # Save the starred filter state to settings
+        self._settings.set_boolean("starred-filter-active", starred)
+
         # Re-apply current search with star filter
         current_query = self.get_search_text()
         self.on_search_changed(current_query)
