@@ -183,6 +183,12 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 * OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
 * Passwords app (libsecret)
 * Niri Windows app
+* Diffusers app
+* Events app
+  * uses evolution-data-server
+  * Search also parses time and appies filters
+  * Uses dateparser to parse natural language
+  * Shows calendar when creating new event
 * Bookmarks v2:
     * uses its own sqlite database to store bookmarks instead of firefox
     * built-in bookmarking (just paste link in search entry)
