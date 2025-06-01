@@ -8,17 +8,18 @@
 
   # Call packages directly using callPackage
   vibeappsPackages = {
-    bookmarks = pkgs.callPackage ./bookmarks/bookmarks.nix {};
-    chat = pkgs.callPackage ./chat/chat.nix {};
-    dataset-viewer = pkgs.callPackage ./dataset-viewer/dataset-viewer.nix {};
-    launcher = pkgs.callPackage ./launcher/launcher.nix {};
-    md2html = pkgs.callPackage ./md2html/md2html.nix {};
-    music = pkgs.callPackage ./music/music.nix {};
-    notes = pkgs.callPackage ./notes/notes.nix {};
-    process-manager = pkgs.callPackage ./process-manager/process-manager.nix {};
-    raise-or-open-url = pkgs.callPackage ./raise-or-open-url/raise-or-open-url.nix {};
-    nix-packages = pkgs.callPackage ./nix-packages/nix-packages.nix {};
-    scratchpad = pkgs.callPackage ./scratchpad/scratchpad.nix {};
+    bookmarks = pkgs.callPackage ./apps/bookmarks/bookmarks.nix {};
+    chat = pkgs.callPackage ./apps/chat/chat.nix {};
+    dataset-viewer = pkgs.callPackage ./apps/dataset-viewer/dataset-viewer.nix {};
+    launcher = pkgs.callPackage ./apps/launcher/launcher.nix {};
+    music = pkgs.callPackage ./apps/music/music.nix {};
+    notes = pkgs.callPackage ./apps/notes/notes.nix {};
+    process-manager = pkgs.callPackage ./apps/process-manager/process-manager.nix {};
+    nix-packages = pkgs.callPackage ./apps/nix-packages/nix-packages.nix {};
+    scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
+
+    md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
+    raise-or-open-url = pkgs.callPackage ./utils/raise-or-open-url/raise-or-open-url.nix {};
   };
 
   # Define all available programs
