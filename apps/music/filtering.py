@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from typing import List, Optional, Any
 from gi.repository import GLib
 from dataclasses import dataclass
@@ -8,6 +6,7 @@ from dataclasses import dataclass
 @dataclass
 class FilterState:
     """State for ongoing filter operations."""
+
     query_lower: str
     original_query: str
     star_filter_active: bool
@@ -19,6 +18,7 @@ class FilterState:
 @dataclass
 class ResultState:
     """State for ongoing result addition operations."""
+
     filtered_releases: List[Any]
     current_index: int
     batch_size: int
@@ -59,7 +59,9 @@ class MusicFilter:
 
         # Simple filtering for small collections (< 100 items)
         if len(self.window._all_releases) < 100:
-            filtered_releases = self._filter_small_collection(query_lower, star_filter_active)
+            filtered_releases = self._filter_small_collection(
+                query_lower, star_filter_active
+            )
             self._apply_search_results(filtered_releases, query)
         else:
             # Use batched filtering for large collections
@@ -77,8 +79,10 @@ class MusicFilter:
 
     def _get_star_filter_state(self) -> bool:
         """Get the current star filter state."""
-        return (hasattr(self.window, '_star_filter_button') and
-                self.window._star_filter_button.get_starred())
+        return (
+            hasattr(self.window, "_star_filter_button")
+            and self.window._star_filter_button.get_starred()
+        )
 
     def _handle_empty_query(self, star_filter_active: bool):
         """Handle empty search query."""
@@ -105,23 +109,28 @@ class MusicFilter:
             if star_filter_active:
                 self.window._show_empty(
                     title="No Starred Music Found",
-                    description="No starred releases match your criteria."
+                    description="No starred releases match your criteria.",
                 )
             else:
                 self.window._show_empty(
                     title="No Music Found",
-                    description=f"No audio files found in {self.window._music_dir}"
+                    description=f"No audio files found in {self.window._music_dir}",
                 )
 
-    def _filter_small_collection(self, query_lower: str, star_filter_active: bool) -> List[Any]:
+    def _filter_small_collection(
+        self, query_lower: str, star_filter_active: bool
+    ) -> List[Any]:
         """Filter small collections directly."""
         return [
-            release for release in self.window._all_releases
-            if query_lower in release.title.lower() and
-            (not star_filter_active or release.starred)
+            release
+            for release in self.window._all_releases
+            if query_lower in release.title.lower()
+            and (not star_filter_active or release.starred)
         ]
 
-    def _start_batched_filtering(self, query_lower: str, original_query: str, star_filter_active: bool = False):
+    def _start_batched_filtering(
+        self, query_lower: str, original_query: str, star_filter_active: bool = False
+    ):
         """Start batched filtering for large collections."""
         self._current_filter_state = FilterState(
             query_lower=query_lower,
@@ -129,7 +138,7 @@ class MusicFilter:
             star_filter_active=star_filter_active,
             filtered_releases=[],
             current_index=0,
-            batch_size=100  # Smaller batches for better responsiveness
+            batch_size=100,  # Smaller batches for better responsiveness
         )
 
         self._filter_idle_id = GLib.idle_add(self._filter_next_batch)
@@ -148,13 +157,16 @@ class MusicFilter:
             self._filter_idle_id = 0
             return False
 
-        end_index = min(state.current_index + state.batch_size, len(self.window._all_releases))
+        end_index = min(
+            state.current_index + state.batch_size, len(self.window._all_releases)
+        )
 
         # Process this batch
         for i in range(state.current_index, end_index):
             release = self.window._all_releases[i]
-            if (state.query_lower in release.title.lower() and
-                (not state.star_filter_active or release.starred)):
+            if state.query_lower in release.title.lower() and (
+                not state.star_filter_active or release.starred
+            ):
                 state.filtered_releases.append(release)
 
         state.current_index = end_index
@@ -165,7 +177,9 @@ class MusicFilter:
         else:
             # Filtering complete - verify query hasn't changed
             if state.original_query == self._current_query:
-                self._apply_search_results(state.filtered_releases, state.original_query)
+                self._apply_search_results(
+                    state.filtered_releases, state.original_query
+                )
             self._filter_idle_id = 0
             self._current_filter_state = None
             return False
@@ -177,12 +191,12 @@ class MusicFilter:
             if query:
                 self.window._show_empty(
                     title=f"No Results for '{query}'",
-                    description="Try a different search term."
+                    description="Try a different search term.",
                 )
             else:
                 self.window._show_empty(
                     title="No Music Found",
-                    description=f"No audio files found in {self.window._music_dir}"
+                    description=f"No audio files found in {self.window._music_dir}",
                 )
             return
 
@@ -200,7 +214,7 @@ class MusicFilter:
         self._current_result_state = ResultState(
             filtered_releases=filtered_releases,
             current_index=0,
-            batch_size=50  # Add 50 items at a time
+            batch_size=50,  # Add 50 items at a time
         )
 
         # Start adding results immediately
@@ -219,7 +233,9 @@ class MusicFilter:
             self._current_result_state = None
             return False
 
-        end_index = min(state.current_index + state.batch_size, len(state.filtered_releases))
+        end_index = min(
+            state.current_index + state.batch_size, len(state.filtered_releases)
+        )
 
         # Add this batch of items
         for i in range(state.current_index, end_index):
@@ -270,11 +286,15 @@ class MusicFilter:
             query_lower = current_query.lower()
             if len(self.window._all_releases) < 100:
                 # Small collection - filter directly
-                filtered_releases = self._filter_small_collection(query_lower, star_filter_active)
+                filtered_releases = self._filter_small_collection(
+                    query_lower, star_filter_active
+                )
                 self._apply_search_results(filtered_releases, current_query)
             else:
                 # Large collection - use batched filtering
-                self._start_batched_filtering(query_lower, current_query, star_filter_active)
+                self._start_batched_filtering(
+                    query_lower, current_query, star_filter_active
+                )
 
     def clear_all_operations(self):
         """Clear all ongoing filter operations."""

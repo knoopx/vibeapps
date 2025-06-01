@@ -14,29 +14,12 @@ from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
 from picker_window import PickerWindow, PickerItem
 from star_button import StarButton
 from circular_progress import CircularProgress
-from scanner import MusicScanner
-from caching import ReleaseData
+from scanning import MusicScanner
 from starring import StarringManager
 from filtering import MusicFilter
+from serialization import ReleaseItem, convert_release_items_to_data
 
 APP_ID = "net.knoopx.music"
-
-
-class ReleaseItem(PickerItem):
-    """Represents a music release (album/directory)."""
-    __gtype_name__ = "ReleaseItem"
-
-    title = GObject.Property(type=str, default="")
-    path = GObject.Property(type=str, default="")
-    track_count = GObject.Property(type=int, default=0)
-    starred = GObject.Property(type=bool, default=False)
-
-    def __init__(self, title: str, path: str, track_count: int = 0, starred: bool = False):
-        super().__init__()
-        self.title = title
-        self.path = path
-        self.track_count = track_count
-        self.starred = starred
 
 
 class MusicWindow(PickerWindow):
@@ -53,7 +36,9 @@ class MusicWindow(PickerWindow):
         self._starring_manager = StarringManager()
 
         # Initialize scanner
-        self._scanner = MusicScanner(self._music_dir, self._starring_manager.is_release_starred)
+        self._scanner = MusicScanner(
+            self._music_dir, self._starring_manager.is_release_starred
+        )
 
         # Initialize dconf settings
         self._settings = Gio.Settings.new("net.knoopx.music")
@@ -62,11 +47,7 @@ class MusicWindow(PickerWindow):
         self._progress_widget = CircularProgress()
         self._progress_widget.set_visible(False)  # Initially hidden
 
-        super().__init__(
-            title="Music",
-            search_placeholder="Search music...",
-            **kwargs
-        )
+        super().__init__(title="Music", search_placeholder="Search music...", **kwargs)
 
         # Initialize filter after window is created
         self._filter = MusicFilter(self)
@@ -81,9 +62,7 @@ class MusicWindow(PickerWindow):
 
         # Apply to the current display
         Gtk.StyleContext.add_provider_for_display(
-            self.get_display(),
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            self.get_display(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
     # Required abstract method implementations
@@ -111,7 +90,7 @@ class MusicWindow(PickerWindow):
         if not self._music_dir.exists():
             self._show_empty(
                 title="Music Directory Not Found",
-                description=f"Could not find music directory at {self._music_dir}"
+                description=f"Could not find music directory at {self._music_dir}",
             )
             return
 
@@ -120,10 +99,15 @@ class MusicWindow(PickerWindow):
             return
 
         # Try to load from cache first
-        cache_valid, cached_releases = self._scanner.cache.load_from_cache()
-        if cache_valid and cached_releases:
-            self._load_cache_in_background(cached_releases)
-        else:
+        cache_loaded = self._scanner.cache.load_cache_in_background(
+            progress_callback=self._update_cache_loading_progress,
+            completion_callback=self._finalize_cache_loading,
+            error_callback=self._handle_cache_error,
+            converter_func=self._create_release_item_converter(),
+            cancel_checker=lambda: self._scanner._scan_cancelled,
+        )
+
+        if not cache_loaded:
             # No valid cache, do a full scan
             self._initialize_scanning()
             thread = threading.Thread(target=self._scan_music_directory)
@@ -150,51 +134,14 @@ class MusicWindow(PickerWindow):
         else:
             self._show_empty(
                 title="No Music Found",
-                description=f"No audio files found in {self._music_dir}"
+                description=f"No audio files found in {self._music_dir}",
             )
 
-    def _load_cache_in_background(self, releases_data):
-        """Load large cache in background with batched UI updates."""
-        try:
-            # Process releases in batches
-            batch_size = 1000
-            all_releases = []
+    def _create_release_item_converter(self):
+        """Create a converter function for ReleaseData to ReleaseItem."""
+        from serialization import create_release_item_converter
 
-            for i in range(0, len(releases_data), batch_size):
-                if self._scanner._scan_cancelled:
-                    return
-
-                batch = releases_data[i:i + batch_size]
-                batch_releases = []
-
-                for release_data in batch:
-                    # Convert ReleaseData to ReleaseItem
-                    release = ReleaseItem(
-                        title=release_data.title,
-                        path=release_data.path,
-                        track_count=release_data.track_count,
-                        starred=self._starring_manager.is_release_starred(release_data.path)
-                    )
-                    batch_releases.append(release)
-
-                all_releases.extend(batch_releases)
-
-                # Update UI with progress every few batches
-                if i == 0 or (i // batch_size) % 5 == 0:
-                    progress = len(all_releases) / len(releases_data)
-                    GLib.idle_add(self._update_cache_loading_progress, len(all_releases), len(releases_data), progress)
-
-            if all_releases:
-                # Sort in background
-                all_releases.sort(key=lambda r: r.title.lower())
-
-                # Update main thread
-                GLib.idle_add(self._finalize_cache_loading, all_releases)
-            else:
-                GLib.idle_add(self._handle_empty_cache)
-
-        except Exception:
-            GLib.idle_add(self._handle_cache_error)
+        return create_release_item_converter(self._starring_manager)
 
     def _update_cache_loading_progress(self, loaded, total, progress):
         """Update UI with cache loading progress."""
@@ -230,7 +177,7 @@ class MusicWindow(PickerWindow):
                 else:
                     self._show_empty(
                         title="No Starred Releases",
-                        description="Star some releases to see them here."
+                        description="Star some releases to see them here.",
                     )
             else:
                 # Use batched loading for UI updates too
@@ -240,33 +187,23 @@ class MusicWindow(PickerWindow):
         # start a background scan for any updates since the cache was created.
         if not self._scanner.is_background_scan_running():
             # Convert ReleaseItems back to ReleaseData for the scanner
-            current_releases = [
-                ReleaseData(r.title, r.path, r.track_count)
-                for r in self._all_releases
-            ]
+
+            current_releases = convert_release_items_to_data(self._all_releases)
             self._scanner.start_background_cache_update(
-                current_releases,
-                self._on_cache_update_complete
+                current_releases, self._on_cache_update_complete
             )
 
         # Ensure main scanning progress is hidden since cache loading is complete
         self._update_progress(0.0)
         self._hide_progress()
 
-        return False # Important for GLib.idle_add to not re-schedule this handler
+        return False  # Important for GLib.idle_add to not re-schedule this handler
 
     def _on_cache_update_complete(self, updated_releases):
         """Handle completion of background cache update."""
-        # Convert ReleaseData back to ReleaseItems
-        self._all_releases = [
-            ReleaseItem(
-                title=rd.title,
-                path=rd.path,
-                track_count=rd.track_count,
-                starred=self._starring_manager.is_release_starred(rd.path)
-            )
-            for rd in updated_releases
-        ]
+        # Convert ReleaseData back to ReleaseItems using the converter
+        converter = self._create_release_item_converter()
+        self._all_releases = [converter(rd) for rd in updated_releases]
 
         # Refresh UI with updated releases
         self._refresh_ui_with_sorted_releases()
@@ -278,7 +215,7 @@ class MusicWindow(PickerWindow):
         self._hide_progress()
         self._show_empty(
             title="No Music Found",
-            description=f"No audio files found in {self._music_dir}"
+            description=f"No audio files found in {self._music_dir}",
         )
         return False
 
@@ -297,18 +234,13 @@ class MusicWindow(PickerWindow):
 
     def _save_to_cache(self):
         """Save current releases to cache using the scanner."""
-        # Convert ReleaseItems to ReleaseData
-        releases_data = [
-            ReleaseData(r.title, r.path, r.track_count)
-            for r in self._all_releases
-        ]
+
+        releases_data = convert_release_items_to_data(self._all_releases)
         self._scanner.cache.save_to_cache(releases_data)
 
     def on_search_changed(self, query: str):
         """Filter releases based on search query."""
         self._filter.search_changed(query)
-
-
 
     def on_item_activated(self, item):
         """Open release directory with amberol."""
@@ -340,19 +272,17 @@ class MusicWindow(PickerWindow):
             margin_top=8,
             margin_bottom=8,
             margin_start=12,
-            margin_end=12
+            margin_end=12,
         )
 
         # Star button
         star_button = StarButton(starred=False)
-        star_button.connect('star-toggled', self._on_star_button_toggled)
+        star_button.connect("star-toggled", self._on_star_button_toggled)
         main_box.append(star_button)
 
         # Content box for title and info
         content_box = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=2,
-            hexpand=True
+            orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True
         )
 
         # Release title
@@ -361,17 +291,14 @@ class MusicWindow(PickerWindow):
             xalign=0,
             wrap=False,
             single_line_mode=True,
-            ellipsize=Pango.EllipsizeMode.END
+            ellipsize=Pango.EllipsizeMode.END,
         )
         title_label.add_css_class("heading")
 
         # Track count and path info
         info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
-        track_count_label = Gtk.Label(
-            halign=Gtk.Align.START,
-            xalign=0
-        )
+        track_count_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         track_count_label.add_css_class("dim-label")
         track_count_label.add_css_class("caption")
 
@@ -434,7 +361,7 @@ class MusicWindow(PickerWindow):
             "toggle_star": "on_toggle_star_action",
             "open_release": "on_open_release_action",
             "reveal": "on_reveal_action",
-            "trash_release": "on_trash_release_action"
+            "trash_release": "on_trash_release_action",
         }
 
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
@@ -460,7 +387,9 @@ class MusicWindow(PickerWindow):
         if selected_item:
             self._starring_manager.toggle_release_starred(selected_item.path)
             # Update the item's starred status
-            selected_item.starred = self._starring_manager.is_release_starred(selected_item.path)
+            selected_item.starred = self._starring_manager.is_release_starred(
+                selected_item.path
+            )
             # Refresh the UI to show the updated star
             self._refresh_single_item(selected_item)
 
@@ -492,11 +421,10 @@ class MusicWindow(PickerWindow):
             return
 
         # Create confirmation dialog
-        dialog = Adw.MessageDialog.new(
-            self,
-            f"Move '{selected_item.title}' to Trash?"
+        dialog = Adw.MessageDialog.new(self, f"Move '{selected_item.title}' to Trash?")
+        dialog.set_body(
+            f"This will move the entire directory and all its contents to trash.\n\nPath: {selected_item.path}"
         )
-        dialog.set_body(f"This will move the entire directory and all its contents to trash.\n\nPath: {selected_item.path}")
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("trash", "Move to Trash")
         dialog.set_response_appearance("trash", Adw.ResponseAppearance.DESTRUCTIVE)
@@ -515,15 +443,16 @@ class MusicWindow(PickerWindow):
                 file.trash(None)
 
                 # Remove from our list and refresh
-                self._all_releases = [r for r in self._all_releases if r.path != item.path]
+                self._all_releases = [
+                    r for r in self._all_releases if r.path != item.path
+                ]
                 self.on_search_changed(self.get_search_text())
 
             except Exception as e:
-                error_dialog = Adw.MessageDialog.new(
-                    self,
-                    "Error Moving to Trash"
+                error_dialog = Adw.MessageDialog.new(self, "Error Moving to Trash")
+                error_dialog.set_body(
+                    f"Could not move '{item.title}' to trash:\n{str(e)}"
                 )
-                error_dialog.set_body(f"Could not move '{item.title}' to trash:\n{str(e)}")
                 error_dialog.add_response("ok", "OK")
                 error_dialog.set_default_response("ok")
                 error_dialog.present()
@@ -548,7 +477,7 @@ class MusicWindow(PickerWindow):
         starred_filter_active = self._settings.get_boolean("starred-filter-active")
         self._star_filter_button = StarButton(starred=starred_filter_active)
         self._star_filter_button.set_tooltip_text("Show only starred releases")
-        self._star_filter_button.connect('star-toggled', self._on_star_filter_toggled)
+        self._star_filter_button.connect("star-toggled", self._on_star_filter_toggled)
 
         return [self._star_filter_button]
 
@@ -583,7 +512,7 @@ class MusicWindow(PickerWindow):
         self._all_releases = []
         self._scan_generator = None
         self._scan_cancelled = False  # Reset cancellation flag
-        self._cache_loaded = False   # Reset cache flag
+        self._cache_loaded = False  # Reset cache flag
         self._scan_progress = 0.0
         self._scan_current_count = 0
         self.remove_all_items()
@@ -610,18 +539,18 @@ class MusicWindow(PickerWindow):
 
         if result is not None:
             # Handle progress updates
-            if isinstance(result, tuple) and len(result) == 2 and result[0] == 'progress':
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and result[0] == "progress"
+            ):
                 # Update progress in the UI (we're already in main thread)
                 progress_fraction = result[1]
                 self._update_progress(progress_fraction)
-            elif hasattr(result, 'title'):  # ReleaseData object
+            elif hasattr(result, "title"):  # ReleaseData object
                 # If we got a new release, convert ReleaseData to ReleaseItem and add it
-                release_item = ReleaseItem(
-                    title=result.title,
-                    path=result.path,
-                    track_count=result.track_count,
-                    starred=self._starring_manager.is_release_starred(result.path)
-                )
+                converter = self._create_release_item_converter()
+                release_item = converter(result)  # result is ReleaseData
                 self._add_single_release(release_item)
 
         # Continue scanning on next idle
@@ -641,11 +570,15 @@ class MusicWindow(PickerWindow):
         current_query = self.get_search_text().strip()
 
         # Check if star filter is active
-        star_filter_active = hasattr(self, '_star_filter_button') and self._star_filter_button.get_starred()
+        star_filter_active = (
+            hasattr(self, "_star_filter_button")
+            and self._star_filter_button.get_starred()
+        )
 
         # Only add to UI if it matches current search (or no search active) and star filter
-        should_show = (not current_query or current_query.lower() in release.title.lower()) and \
-                      (not star_filter_active or release.starred)
+        should_show = (
+            not current_query or current_query.lower() in release.title.lower()
+        ) and (not star_filter_active or release.starred)
         if should_show:
             self.add_item(release)
 
@@ -655,7 +588,7 @@ class MusicWindow(PickerWindow):
         if len(self._all_releases) == 1:
             self.set_loading(False)  # This switches from loading to results view
             # Keep progress visible during scanning with current fraction
-            if hasattr(self, '_scan_progress') and self._scan_progress > 0:
+            if hasattr(self, "_scan_progress") and self._scan_progress > 0:
                 self._update_progress(self._scan_progress)
             else:
                 # Show minimal progress to indicate scanning is ongoing
@@ -673,7 +606,7 @@ class MusicWindow(PickerWindow):
         """Called when scanning is completely finished."""
         # Ensure progress is completely hidden
         self._update_progress(0.0)  # Set fraction to 0 and hide
-        self._hide_progress()       # Double ensure it's hidden
+        self._hide_progress()  # Double ensure it's hidden
 
         # Only set loading to false if we have no releases yet
         # (it should already be false if we found any releases)
@@ -681,7 +614,7 @@ class MusicWindow(PickerWindow):
             self.set_loading(False)
             self._show_empty(
                 title="No Music Found",
-                description=f"No audio files found in {self._music_dir}"
+                description=f"No audio files found in {self._music_dir}",
             )
         else:
             # Sort releases alphabetically and refresh the UI
@@ -701,17 +634,17 @@ class MusicWindow(PickerWindow):
     def _clear_all_operations(self):
         """Clear all ongoing operations to prevent race conditions."""
         # Cancel any pending search operations
-        if hasattr(self, '_search_idle_id') and self._search_idle_id > 0:
+        if hasattr(self, "_search_idle_id") and self._search_idle_id > 0:
             GLib.source_remove(self._search_idle_id)
             self._search_idle_id = 0
 
         # Clear filter operations
-        if hasattr(self, '_filter'):
+        if hasattr(self, "_filter"):
             self._filter.clear_all_operations()
 
         # Hide progress indicator
         self._update_progress(0.0)  # Reset fraction to 0
-        self._hide_progress()       # Ensure it's hidden
+        self._hide_progress()  # Ensure it's hidden
 
         # Reset flags
         self._scan_cancelled = True
@@ -721,7 +654,7 @@ class MusicWindow(PickerWindow):
     def _on_star_button_toggled(self, star_button, starred):
         """Handle star button toggle events from the UI."""
         # Get the item reference stored on the button
-        item = getattr(star_button, 'item', None)
+        item = getattr(star_button, "item", None)
         if not item:
             return
 
@@ -733,6 +666,7 @@ class MusicWindow(PickerWindow):
         # Ensure button state matches the actual starred state
         # (in case there was any discrepancy)
         star_button.set_starred(item.starred)
+
 
 class MusicApplication(Adw.Application):
     """Main application class."""

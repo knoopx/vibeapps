@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-
 import json
 from pathlib import Path
 from typing import Set
+
 
 class StarringManager:
     """Manages starring/unstarring of music releases."""
@@ -28,9 +27,9 @@ class StarringManager:
         """Load starred releases from starred.json."""
         try:
             if self.starred_file.exists():
-                with open(self.starred_file, 'r', encoding='utf-8') as f:
+                with open(self.starred_file, "r", encoding="utf-8") as f:
                     starred_data = json.load(f)
-                    self._starred_releases = set(starred_data.get('starred', []))
+                    self._starred_releases = set(starred_data.get("starred", []))
         except (json.JSONDecodeError, OSError):
             self._starred_releases = set()
 
@@ -40,13 +39,11 @@ class StarringManager:
             # Ensure config directory exists
             self.config_dir.mkdir(parents=True, exist_ok=True)
 
-            starred_data = {
-                'starred': sorted(list(self._starred_releases))
-            }
+            starred_data = {"starred": sorted(list(self._starred_releases))}
 
             # Write starred file atomically
-            temp_file = self.starred_file.with_suffix('.tmp')
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            temp_file = self.starred_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(starred_data, f, indent=2, ensure_ascii=False)
 
             # Atomic rename
