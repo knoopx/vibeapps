@@ -3,16 +3,10 @@ import time
 import threading
 from pathlib import Path
 from typing import Optional, List, Tuple, Callable, Any
-from serialization import ReleaseData
-
-import gi
-
-gi.require_version("GLib", "2.0")
+from serialization import APP_ID, ReleaseData
 from gi.repository import GLib
 
-
-# Cache configuration
-CACHE_DIR = Path.home() / ".cache" / "net.knoopx.music"
+CACHE_DIR = Path.home() / ".cache" / APP_ID
 CACHE_FILE = CACHE_DIR / "releases_cache.json"
 CACHE_VERSION = 1  # Increment when cache format changes
 

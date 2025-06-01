@@ -1,6 +1,7 @@
-from picker_window import PickerWindow, PickerItem
-from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
+from picker_window import PickerItem
+from gi.repository import GObject
 
+APP_ID = "net.knoopx.music"
 
 class ReleaseItem(PickerItem):
     """Represents a music release (album/directory)."""

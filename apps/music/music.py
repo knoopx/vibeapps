@@ -9,18 +9,16 @@ from typing import Optional
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
+gi.require_version("GLib", "2.0")
 
-from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
-from picker_window import PickerWindow, PickerItem
+from gi.repository import Gtk, Adw, GLib, Gio, Pango
+from picker_window import PickerWindow
 from star_button import StarButton
 from circular_progress import CircularProgress
 from scanning import MusicScanner
 from starring import StarringManager
 from filtering import MusicFilter
-from serialization import ReleaseItem, convert_release_items_to_data
-
-APP_ID = "net.knoopx.music"
-
+from serialization import APP_ID, ReleaseItem, convert_release_items_to_data
 
 class MusicWindow(PickerWindow):
     """Music launcher window that shows releases/albums."""

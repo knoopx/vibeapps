@@ -1,20 +1,15 @@
 import json
 from pathlib import Path
 from typing import Set
+from serialization import APP_ID
 
 
 class StarringManager:
     """Manages starring/unstarring of music releases."""
 
     def __init__(self, config_dir: Path = None):
-        """Initialize the starring manager.
-
-        Args:
-            config_dir: Directory to store starred releases config.
-                       Defaults to ~/.config/net.knoopx.music
-        """
         if config_dir is None:
-            config_dir = Path.home() / ".config" / "net.knoopx.music"
+            config_dir = Path.home() / ".config" / APP_ID
 
         self.config_dir = config_dir
         self.starred_file = config_dir / "starred.json"
