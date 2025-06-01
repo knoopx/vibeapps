@@ -5,58 +5,55 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "music";
-    src = pkgs.runCommand "music-src" {} ''
-      mkdir -p $out
-      cp ${./music.py} $out/music.py
-      cp ${./net.knoopx.music.gschema.xml} $out/net.knoopx.music.gschema.xml
-      cp ${../picker_window.py} $out/picker_window.py
-      cp ${../context_menu_window.py} $out/context_menu_window.py
-      cp ${../star_button.py} $out/star_button.py
-    '';
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
       wrapGAppsHook4
       gobject-introspection
+      glib
     ];
 
-    buildInputs = with pkgs; [
-      libadwaita
-      glib # for glib-compile-schemas
-      pkgs.gst_all_1.gstreamer
-      pkgs.gst_all_1.gst-plugins-base
-      pkgs.gst_all_1.gst-plugins-good
-      pkgs.gst_all_1.gst-plugins-bad
-      pkgs.gst_all_1.gst-plugins-ugly
+    buildInputs = with pkgs;
+      [
+        libadwaita
+      ]
+      ++ (with pkgs.gst_all_1; [
+        gstreamer
+        gst-plugins-base
+        gst-plugins-good
+        gst-plugins-bad
+        gst-plugins-ugly
+      ]);
+
+    propagatedBuildInputs = with pkgs.python3Packages; [
+      pygobject3
+      orjson
     ];
 
-    preFixup = ''
-      gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
-        p.pygobject3
-        p.orjson
-      ])}/${pkgs.python3.sitePackages}")
-    '';
+    installPhase = ''
+      runHook preInstall
 
-    buildPhase = ''
-      mkdir -p $out/bin $out/lib/python
-      cp $src/picker_window.py $out/lib/python/
-      cp $src/context_menu_window.py $out/lib/python/
-      cp $src/star_button.py $out/lib/python/
-      cp $src/music.py $out/bin/music
+      mkdir -p $out/bin $out/${pkgs.python3.sitePackages} $out/share/glib-2.0/schemas
+
+      # Install local Python modules
+      cp *.py $out/${pkgs.python3.sitePackages}/
+
+      # Install shared Python modules from parent directory
+      cp ${../picker_window.py} $out/${pkgs.python3.sitePackages}/picker_window.py
+      cp ${../context_menu_window.py} $out/${pkgs.python3.sitePackages}/context_menu_window.py
+      cp ${../star_button.py} $out/${pkgs.python3.sitePackages}/star_button.py
+      cp ${../circular_progress.py} $out/${pkgs.python3.sitePackages}/circular_progress.py
+
+      # Install main executable
+      cp music.py $out/bin/music
       chmod +x $out/bin/music
-    '';
 
-    postInstall = ''
-      # Install schema
-      mkdir -p $out/share/glib-2.0/schemas
-      install -Dm644 $src/net.knoopx.music.gschema.xml $out/share/glib-2.0/schemas/net.knoopx.music.gschema.xml
+      # Install GSettings schema
+      install -Dm644 net.knoopx.music.gschema.xml $out/share/glib-2.0/schemas/
       glib-compile-schemas $out/share/glib-2.0/schemas/
-    '';
 
-    postFixup = ''
-      # Ensure picker_window.py is in the Python path
-      wrapProgram $out/bin/music \
-        --prefix PYTHONPATH : $out/lib/python
+      runHook postInstall
     '';
 
     meta.mainProgram = "music";
