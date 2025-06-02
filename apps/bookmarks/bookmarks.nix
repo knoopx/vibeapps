@@ -5,12 +5,7 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "bookmarks";
-    src = pkgs.runCommand "bookmarks-src" {} ''
-      mkdir -p $out
-      cp ${./bookmarks.py} $out/bookmarks.py
-      cp ${../picker_window.py} $out/picker_window.py
-      cp ${../context_menu_window.py} $out/context_menu_window.py
-    '';
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -22,29 +17,23 @@
       libadwaita
     ];
 
-    propagatedBuildInputs = with pkgs; [
-      foxmarks
+    propagatedBuildInputs = with pkgs.python3Packages; [
+      pygobject3
     ];
 
-    preFixup = ''
-      gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
-        p.pygobject3
-      ])}/${pkgs.python3.sitePackages}")
-      gappsWrapperArgs+=(--prefix PATH : "${lib.makeBinPath [pkgs.foxmarks]}")
-    '';
+    installPhase = ''
+      runHook preInstall
 
-    buildPhase = ''
-      mkdir -p $out/bin $out/lib/python
-      cp $src/picker_window.py $out/lib/python/
-      cp $src/context_menu_window.py $out/lib/python/
+      mkdir -p $out/bin $out/${pkgs.python3.sitePackages}/
+
+      cp *.py $out/${pkgs.python3.sitePackages}/
+      cp ${../picker_window.py} $out/${pkgs.python3.sitePackages}/picker_window.py
+      cp ${../context_menu_window.py} $out/${pkgs.python3.sitePackages}/context_menu_window.py
+
       cp $src/bookmarks.py $out/bin/bookmarks
       chmod +x $out/bin/bookmarks
-    '';
 
-    postFixup = ''
-      # Ensure picker_window.py is in the Python path
-      wrapProgram $out/bin/bookmarks \
-        --prefix PYTHONPATH : $out/lib/python
+      runHook postInstall
     '';
 
     meta.mainProgram = "bookmarks";

@@ -1,6 +1,7 @@
 import os
 
 class Note:
+
     def __init__(self, relative_path):
         self._relative_path = relative_path
 
