@@ -158,7 +158,7 @@ class BookmarksWindow(PickerWindow):
                 shutil.copy2(db_path, temp_db)
                 conn = sqlite3.connect(temp_db)
                 cursor = conn.cursor()
-                query = '\n                SELECT p.title, p.url, b.dateAdded\n                FROM moz_places p\n                JOIN moz_bookmarks b ON p.id = b.fk\n                WHERE b.type = 1 AND p.url IS NOT NULL AND p.title IS NOT NULL\n                ORDER BY b.dateAdded DESC\n                '
+                query = 'SELECT p.title, p.url, b.dateAdded FROM moz_places p JOIN moz_bookmarks b ON p.id = b.fk WHERE b.type = 1 AND p.url IS NOT NULL AND p.title IS NOT NULL ORDER BY b.dateAdded DESC'
                 cursor.execute(query)
                 results = cursor.fetchall()
                 conn.close()
