@@ -89,9 +89,6 @@ class ProcessManagerWindow(PickerWindow):
     def get_item_type(self):
         return ProcessItem
 
-    def use_list_view(self):
-        return True
-
     def load_initial_data(self):
         self._refresh_processes()
 
@@ -285,12 +282,11 @@ class ProcessManagerWindow(PickerWindow):
             return
         selected_pid = None
         selected_position = None
-        if self.use_list_view():
-            selected_position = self._selection_model.get_selected()
-            if selected_position != Gtk.INVALID_LIST_POSITION:
-                selected_item = self._item_store.get_item(selected_position)
-                if selected_item:
-                    selected_pid = selected_item.pid
+        selected_position = self._selection_model.get_selected()
+        if selected_position != Gtk.INVALID_LIST_POSITION:
+            selected_item = self._item_store.get_item(selected_position)
+            if selected_item:
+                selected_pid = selected_item.pid
         current_items = []
         for i in range(self._item_store.get_n_items()):
             current_items.append(self._item_store.get_item(i))

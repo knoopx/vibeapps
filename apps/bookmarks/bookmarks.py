@@ -35,9 +35,6 @@ class BookmarksWindow(PickerWindow):
     def get_item_type(self):
         return BookmarkItem
 
-    def use_list_view(self):
-        return True
-
     def load_initial_data(self):
         self.set_loading(True)
         thread = threading.Thread(target=self._fetch_bookmarks)

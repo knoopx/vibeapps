@@ -37,9 +37,6 @@ class NixPackagesWindow(PickerWindow):
     def get_item_type(self):
         return PackageItem
 
-    def use_list_view(self):
-        return True
-
     def load_initial_data(self):
         pass
 

@@ -7,7 +7,8 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 gi.require_version('Pango', '1.0')
 gi.require_version('GLib', '2.0')
-from gi.repository import Gtk, Adw, GLib, Gio, Pango
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gtk, Adw, GLib, Gio, Pango, Gdk
 from picker_window import PickerWindow
 from star_button import StarButton
 from circular_progress import CircularProgress
@@ -65,12 +66,7 @@ class MusicWindow(PickerWindow):
     def get_item_type(self):
         return ReleaseItem
 
-    def use_list_view(self):
-        return True
-
     def _refresh_single_item(self, item):
-        if not self.use_list_view():
-            return
         for i in range(self._item_store.get_n_items()):
             store_item = self._item_store.get_item(i)
             if store_item and store_item.path == item.path:
@@ -280,6 +276,20 @@ class MusicWindow(PickerWindow):
         from serialization import convert_release_items_to_data
         releases_data = convert_release_items_to_data(self._all_releases)
         self._scanner.cache.save_to_cache(releases_data)
+
+    def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
+        """Handle additional keyboard shortcuts."""
+        if keyval == Gdk.KEY_space:
+            selected_item = self.get_selected_item()
+            if selected_item:
+                print("Toggling starred status for:", selected_item.title)
+                # Toggle the starred status
+                self._starring_manager.toggle_release_starred(selected_item.path)
+                selected_item.starred = self._starring_manager.is_release_starred(selected_item.path)
+                # Refresh the UI for this item
+                self._refresh_single_item(selected_item)
+                return True
+        return False
 
 class MusicApplication(Adw.Application):
 

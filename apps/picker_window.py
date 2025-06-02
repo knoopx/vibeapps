@@ -62,29 +62,18 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def _setup_results_view(self):
         scrolled_window = Gtk.ScrolledWindow(vexpand=True)
-        if self.use_list_view():
-            factory = Gtk.SignalListItemFactory()
-            factory.connect('setup', self._on_list_item_setup)
-            factory.connect('bind', self._on_list_item_bind)
-            self._list_view = Gtk.ListView(model=self._selection_model, factory=factory)
-            self._list_view.set_vexpand(True)
-            self._list_view.set_can_focus(True)
-            self._list_view.set_single_click_activate(True)
-            click_controller = Gtk.GestureClick()
-            click_controller.connect('pressed', self._on_list_view_clicked)
-            self._list_view.add_controller(click_controller)
-            scrolled_window.set_child(self._list_view)
-            self._scrolled_window = scrolled_window
-        else:
-            self._list_box = Gtk.ListBox()
-            self._list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
-            self._list_box.set_activate_on_single_click(True)
-            self._list_box.set_can_focus(True)
-            click_controller = Gtk.GestureClick()
-            click_controller.connect('pressed', self._on_list_box_clicked)
-            self._list_box.add_controller(click_controller)
-            scrolled_window.set_child(self._list_box)
-            self._scrolled_window = scrolled_window
+        factory = Gtk.SignalListItemFactory()
+        factory.connect('setup', self._on_list_item_setup)
+        factory.connect('bind', self._on_list_item_bind)
+        self._list_view = Gtk.ListView(model=self._selection_model, factory=factory)
+        self._list_view.set_vexpand(True)
+        self._list_view.set_can_focus(True)
+        self._list_view.set_single_click_activate(True)
+        click_controller = Gtk.GestureClick()
+        click_controller.connect('pressed', self._on_list_view_clicked)
+        self._list_view.add_controller(click_controller)
+        scrolled_window.set_child(self._list_view)
+        self._scrolled_window = scrolled_window
         self._content_stack.add_named(scrolled_window, 'results')
 
     def _setup_status_pages(self):
@@ -112,11 +101,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         window_key_controller = Gtk.EventControllerKey()
         window_key_controller.connect('key-pressed', self._on_window_key_pressed)
         self.add_controller(window_key_controller)
-        if self.use_list_view():
-            self._list_view.connect('activate', self._on_list_view_activate)
-            self._selection_model.connect('selection-changed', self._on_selection_changed)
-        else:
-            self._list_box.connect('row-activated', self._on_row_activated)
+        self._list_view.connect('activate', self._on_list_view_activate)
+        self._selection_model.connect('selection-changed', self._on_selection_changed)
         self.connect('close-request', self._on_close_request)
         self.connect('map', self._on_window_map)
 
@@ -175,25 +161,11 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def _on_item_right_click(self, gesture, n_press, x, y, item, list_item=None):
         if n_press == 1:
-            if self.use_list_view():
-                if list_item:
-                    position = list_item.get_position()
-                    if self._selection_model.get_selected() != position:
-                        self._selection_model.set_selected(position)
-            else:
-                row_widget_ancestor = gesture.get_widget()
-                while row_widget_ancestor and (not isinstance(row_widget_ancestor, Gtk.ListBoxRow)):
-                    row_widget_ancestor = row_widget_ancestor.get_parent()
-                if row_widget_ancestor and isinstance(row_widget_ancestor, Gtk.ListBoxRow):
-                    if self._list_box.get_selected_row() != row_widget_ancestor:
-                        self._list_box.select_row(row_widget_ancestor)
+            if list_item:
+                position = list_item.get_position()
+                if self._selection_model.get_selected() != position:
+                    self._selection_model.set_selected(position)
             anchor_for_menu = gesture.get_widget()
-            if not self.use_list_view():
-                row_candidate = gesture.get_widget()
-                while row_candidate and (not isinstance(row_candidate, Gtk.ListBoxRow)):
-                    row_candidate = row_candidate.get_parent()
-                if row_candidate:
-                    anchor_for_menu = row_candidate
             self.show_context_menu(anchor_widget=anchor_for_menu)
 
     def _on_window_map(self, window):
@@ -223,16 +195,11 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         return GLib.SOURCE_REMOVE
 
     def _on_search_activated(self, entry):
-        if self.use_list_view():
-            selected_pos = self._selection_model.get_selected()
-            if selected_pos != Gtk.INVALID_LIST_POSITION:
-                item = self._item_store.get_item(selected_pos)
-                if item:
-                    self.on_item_activated(item)
-        else:
-            selected_row = self._list_box.get_selected_row()
-            if selected_row:
-                self.on_item_activated(self.get_row_item(selected_row))
+        selected_pos = self._selection_model.get_selected()
+        if selected_pos != Gtk.INVALID_LIST_POSITION:
+            item = self._item_store.get_item(selected_pos)
+            if item:
+                self.on_item_activated(item)
 
     def _on_search_key_pressed(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_Escape:
@@ -266,30 +233,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def _on_list_view_clicked(self, gesture, n_press, x, y):
         self._list_view.grab_focus()
 
-    def _on_list_box_clicked(self, gesture, n_press, x, y):
-        self._list_box.grab_focus()
-
     def _forward_navigation_to_list(self, keyval, keycode, state):
-        if self.use_list_view():
-            self._list_view.grab_focus()
-            if self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION and self._item_store.get_n_items() > 0:
-                self._selection_model.set_selected(0)
-        else:
-            self._list_box.grab_focus()
-            if not self._list_box.get_selected_row() and self._list_box.get_first_child():
-                first_visible = self._find_next_visible_row(-1, 1)
-                if first_visible:
-                    self._list_box.select_row(first_visible)
-
-    def _find_next_visible_row(self, start_index: int, direction: int):
-        index = start_index + direction
-        n_items = self._list_box.observe_children().get_n_items()
-        while 0 <= index < n_items:
-            row = self._list_box.get_row_at_index(index)
-            if row and row.get_visible():
-                return row
-            index += direction
-        return None
+        self._list_view.grab_focus()
+        if self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION and self._item_store.get_n_items() > 0:
+            self._selection_model.set_selected(0)
 
     def _on_selection_changed(self, selection_model, position, n_items):
         pass
@@ -298,9 +245,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         item = self._item_store.get_item(position)
         if item:
             self.on_item_activated(item)
-
-    def _on_row_activated(self, list_box, row):
-        self.on_item_activated(self.get_row_item(row))
 
     def _on_close_request(self, window):
         return self.on_close_request()
@@ -322,13 +266,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def _show_results(self):
         self._is_loading = False
         self._content_stack.set_visible_child_name('results')
-        if self.use_list_view():
-            if self._item_store.get_n_items() > 0:
-                self._selection_model.set_selected(0)
-        else:
-            first_visible = self._find_next_visible_row(-1, 1)
-            if first_visible:
-                self._list_box.select_row(first_visible)
+        if self._item_store.get_n_items() > 0:
+            self._selection_model.set_selected(0)
 
     def _show_empty(self, title: Optional[str]=None, description: Optional[str]=None):
         self._is_loading = False
@@ -350,14 +289,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._item_store.remove_all()
 
     def get_selected_item(self):
-        if self.use_list_view():
-            selected_pos = self._selection_model.get_selected()
-            if selected_pos != Gtk.INVALID_LIST_POSITION:
-                return self._item_store.get_item(selected_pos)
-        else:
-            selected_row = self._list_box.get_selected_row()
-            if selected_row:
-                return self.get_row_item(selected_row)
+        selected_pos = self._selection_model.get_selected()
+        if selected_pos != Gtk.INVALID_LIST_POSITION:
+            return self._item_store.get_item(selected_pos)
         return None
 
     def set_loading(self, loading: bool):
@@ -376,10 +310,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     @abstractmethod
     def get_item_type(self) -> type:
-        pass
-
-    @abstractmethod
-    def use_list_view(self) -> bool:
         pass
 
     @abstractmethod
