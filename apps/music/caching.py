@@ -5,17 +5,22 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Callable, Any
 from serialization import APP_ID, ReleaseData
 from gi.repository import GLib
+import os
+
+# Common audio file extensions
+AUDIO_EXTENSIONS = {
+    '.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.opus', '.wma', '.ape', '.alac'
+}
 
 CACHE_DIR = Path.home() / ".cache" / APP_ID
 CACHE_FILE = CACHE_DIR / "releases_cache.json"
 CACHE_VERSION = 1  # Increment when cache format changes
 
 
-class MusicCache:
-    """Handles caching of music release data."""
-
+class MusicLibrary:
     def __init__(self, music_dir: Path):
         self.music_dir = music_dir
+        self._background_scan_running = False
 
     def load_from_cache(self) -> Tuple[bool, Optional[List[ReleaseData]]]:
         """
@@ -170,3 +175,108 @@ class MusicCache:
         thread = threading.Thread(target=background_load, daemon=True)
         thread.start()
         return True
+
+    def start_background_cache_update(self, current_releases: List[ReleaseData],
+                                     update_callback=None) -> None:
+        """
+        Start a background scan to update cache with any new releases.
+
+        Args:
+            current_releases: Currently known releases
+            update_callback: Function to call with updated releases if changes found
+        """
+        if self._background_scan_running:
+            return
+
+        self._background_scan_running = True
+
+        def background_scan():
+            try:
+                new_releases = self._scan_for_cache_update()
+
+                # Check if scan results differ from current
+                new_paths = {r.path for r in new_releases}
+                current_paths = {r.path for r in current_releases}
+
+                if new_paths != current_paths:
+                    # Results changed, sort and update
+                    new_releases.sort(key=lambda r: r.title.lower())
+
+                    # Save updated cache
+                    self.save_to_cache(new_releases)
+
+                    # Notify callback on main thread if provided
+                    if update_callback:
+                        GLib.idle_add(update_callback, new_releases)
+
+            except Exception:
+                pass
+            finally:
+                self._background_scan_running = False
+
+        thread = threading.Thread(target=background_scan, daemon=True)
+        thread.start()
+
+    def _scan_for_cache_update(self) -> List[ReleaseData]:
+        """
+        Perform a full synchronous scan for cache update purposes.
+        Returns a list of all found releases.
+        """
+        new_releases = []
+        found_releases = set()
+
+        try:
+            for root, dirs, files in os.walk(self.music_dir, followlinks=True):
+                root_path = Path(root)
+
+                # Skip hidden directories and very deep nested paths
+                if any(part.startswith('.') for part in root_path.parts):
+                    continue
+
+                # Skip paths that are too deep
+                try:
+                    relative_path = root_path.relative_to(self.music_dir)
+                    if len(relative_path.parts) > 10:
+                        continue
+                except ValueError:
+                    continue
+
+                # Count audio files
+                audio_files = [f for f in files if Path(f).suffix.lower() in AUDIO_EXTENSIONS]
+
+                if audio_files:
+                    if root_path == self.music_dir:
+                        continue
+
+                    path_str = str(root_path)
+                    if path_str not in found_releases:
+                        found_releases.add(path_str)
+
+                        release_title = self._clean_release_title(root_path.name)
+                        new_release = ReleaseData(
+                            title=release_title,
+                            path=path_str,
+                            track_count=len(audio_files)
+                        )
+                        new_releases.append(new_release)
+
+        except Exception:
+            # Return what we have so far
+            pass
+
+        return new_releases
+
+    def _clean_release_title(self, title: str) -> str:
+        """Clean up a release title by normalizing separators."""
+        import re
+        # Replace underscores with spaces
+        title = re.sub(r'_', ' ', title)
+        # Normalize multiple dashes
+        title = re.sub(r'\-+', '-', title)
+        # Normalize spaces around dashes
+        title = re.sub(r'\s+\-\s+', '-', title)
+        return title.strip()
+
+    def is_background_scan_running(self) -> bool:
+        """Check if background scan is running."""
+        return self._background_scan_running

@@ -313,3 +313,25 @@ class MusicFilter:
     def start_batched_result_addition(self, releases: List[Any]):
         """Public method to start batched result addition."""
         self._start_batched_result_addition(releases)
+
+
+class OperationsCoordinator:
+    """Coordinates all ongoing operations for cleanup."""
+
+    def __init__(self, window, filter_manager, scanning_coordinator):
+        self.window = window
+        self.filter_manager = filter_manager
+        self.scanning_coordinator = scanning_coordinator
+
+    def clear_all_operations(self):
+        """Clear all ongoing operations to prevent race conditions."""
+        # Clear filter operations
+        if self.filter_manager:
+            self.filter_manager.clear_all_operations()
+
+        # Clear scanning operations
+        if self.scanning_coordinator:
+            self.scanning_coordinator.cancel_all_operations()
+
+        # Hide progress indicator
+        self.window._update_progress(0.0)  # Reset fraction to 0
