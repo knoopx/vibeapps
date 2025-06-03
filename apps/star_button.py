@@ -14,29 +14,39 @@ class StarButton(Gtk.Button):
         self.add_css_class("flat")
         self.add_css_class("ghost-star")
         self.set_valign(Gtk.Align.CENTER)
-        self.starred = starred
+
+        # Connect to property change notification before setting the property
+        self.connect("notify::starred", self._on_starred_changed)
+
+        # Set the initial starred state
+        self.set_property("starred", starred)
         self._update_icon()
+
+        # Connect click handler
         self.connect("clicked", self._on_clicked)
 
+    def _on_starred_changed(self, obj, pspec):
+        self._update_icon()
+
     def _update_icon(self) -> None:
-        icon_name = "starred-symbolic" if self.starred else "non-starred-symbolic"
+        starred = self.get_property("starred")
+        icon_name = "starred-symbolic" if starred else "non-starred-symbolic"
         self.set_icon_name(icon_name)
 
     def _on_clicked(self, button) -> None:
         self.toggle_starred()
 
     def toggle_starred(self) -> None:
-        self.starred = not self.starred
-        self._update_icon()
-        self.emit("star-toggled", self.starred)
+        current_starred = self.get_property("starred")
+        new_starred = not current_starred
+        self.set_property("starred", new_starred)
+        self.emit("star-toggled", new_starred)
 
     def set_starred(self, starred: bool) -> None:
-        if self.starred != starred:
-            self.starred = starred
-            self._update_icon()
+        self.set_property("starred", starred)
 
     def get_starred(self) -> bool:
-        return self.starred
+        return self.get_property("starred")
 
     @staticmethod
     def get_css_style():

@@ -445,12 +445,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def bind_list_item(self, list_item: Gtk.ListItem, item: Any) -> None:
         pass
 
-    def get_row_item(self, row: Any) -> Optional[Any]:
-        return getattr(row, "item", None)
-
-    def create_row_widget(self, item: Any) -> Gtk.Widget:
-        return Gtk.Label(label=str(item))
-
     def on_additional_key_pressed(
         self, keyval: int, keycode: int, state: Gdk.ModifierType
     ) -> bool:

@@ -132,7 +132,8 @@ class MusicScanner:
     def _clean_release_title(self, title: str) -> str:
         title = re.sub("_", " ", title)
         title = re.sub("\\-+", "-", title)
-        title = re.sub("\\s+\\-\\s+", "-", title)
+        title = re.sub("\\s+", " ", title)
+        title = re.sub(" - ", "-", title)
         return title.strip()
 
 

@@ -18,6 +18,8 @@ from scanning import MusicScanner, ScanningCoordinator
 from starring import StarringManager
 from filtering import MusicFilter, OperationsCoordinator
 from serialization import APP_ID, ReleaseItem
+from release_list_item_widget import ReleaseListItemWidget
+from context_menu_widget import ReleaseContextMenuWidget
 
 
 class MusicWindow(PickerWindow):
@@ -32,15 +34,18 @@ class MusicWindow(PickerWindow):
         self._settings = Gio.Settings.new("net.knoopx.music")
         self._progress_widget = CircularProgress()
         self._progress_widget.set_visible(False)
-        self._filter = None
         self._scanning_coordinator = ScanningCoordinator(
             self, self._scanner, self._update_progress
         )
-        super().__init__(title="Music", search_placeholder="Search music...", **kwargs)
         self._filter = MusicFilter(self)
         self._operations_coordinator = OperationsCoordinator(
             self, self._filter, self._scanning_coordinator
         )
+        self._context_menu_widget = ReleaseContextMenuWidget(self)
+
+        super().__init__(title="Music", search_placeholder="Search music...", **kwargs)
+
+        self._context_menu_widget.setup_actions()
         self._setup_keyboard_shortcuts()
         self._setup_css()
 
@@ -61,11 +66,10 @@ class MusicWindow(PickerWindow):
     def _on_toggle_starred_filter_shortcut(
         self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
     ) -> None:
-        if hasattr(self, "_star_filter_button"):
-            current_state = self._star_filter_button.get_starred()
-            new_state = not current_state
-            self._star_filter_button.set_starred(new_state)
-            self._on_star_filter_toggled(self._star_filter_button, new_state)
+        current_state = self._star_filter_button.get_starred()
+        new_state = not current_state
+        self._star_filter_button.set_starred(new_state)
+        self._on_star_filter_toggled(self._star_filter_button, new_state)
 
     def _on_refresh_filter_shortcut(
         self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
@@ -108,8 +112,10 @@ class MusicWindow(PickerWindow):
         return create_release_item_converter(self._starring_manager)
 
     def on_search_changed(self, query: str) -> None:
-        if self._filter:
-            self._filter.search_changed(query)
+        self._filter.search_changed(query)
+
+    def on_search_cleared(self) -> None:
+        self._filter.search_changed("")
 
     def on_item_activated(self, item: ReleaseItem) -> None:
         if item and item.path:
@@ -127,94 +133,29 @@ class MusicWindow(PickerWindow):
                     pass
 
     def setup_list_item(self, list_item: Gtk.ListItem) -> None:
-        main_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=12,
-            margin_top=8,
-            margin_bottom=8,
-            margin_start=12,
-            margin_end=12,
-        )
-        star_button = StarButton(starred=False)
-
         def _on_star_item(star_button, starred):
             item = list_item.get_item()
             if item:
-                self.toggle_starred(item)
-                # star_button.set_starred(item.get_property('starred'))
+                self.set_starred(item, starred)
 
-        star_button.connect("star-toggled", _on_star_item)
-
-        main_box.append(star_button)
-        content_box = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True
-        )
-        title_label = Gtk.Label(
-            halign=Gtk.Align.START,
-            xalign=0,
-            wrap=False,
-            single_line_mode=True,
-            ellipsize=Pango.EllipsizeMode.END,
-        )
-        title_label.add_css_class("heading")
-        info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        track_count_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        track_count_label.add_css_class("dim-label")
-        track_count_label.add_css_class("caption")
-        info_box.append(track_count_label)
-        content_box.append(title_label)
-        content_box.append(info_box)
-        main_box.append(content_box)
-        list_item.set_child(main_box)
+        widget = ReleaseListItemWidget(on_star_toggled=_on_star_item)
+        list_item.set_child(widget)
 
     def bind_list_item(self, list_item: Gtk.ListItem, item: ReleaseItem) -> None:
         if not item:
             return
-        main_box = list_item.get_child()
-        if not main_box:
-            return
-        star_button = main_box.get_first_child()
 
-        if not star_button:
+        widget = list_item.get_child()
+        if not isinstance(widget, ReleaseListItemWidget):
             return
 
-        star_button.bind_property("starred", item, "starred")
-
-        content_box = star_button.get_next_sibling()
-        if not content_box:
-            return
-        title_label = content_box.get_first_child()
-        if not title_label:
-            return
-        info_box = title_label.get_next_sibling()
-        if not info_box:
-            return
-        track_count_label = info_box.get_first_child()
-        if not track_count_label:
-            return
-        star_button.set_starred(item.get_property("starred"))
-        title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
-        track_text = f"{item.track_count} track{('s' if item.track_count != 1 else '')}"
-        track_count_label.set_text(track_text)
+        widget.bind_to_item(item)
 
     def get_context_menu_actions(self) -> Dict[str, str]:
-        return {
-            "toggle_star": "on_toggle_star_action",
-            "open_release": "on_open_release_action",
-            "reveal": "on_reveal_action",
-            "trash_release": "on_trash_release_action",
-        }
+        return self._context_menu_widget.get_context_menu_actions()
 
     def get_context_menu_model(self, item: Optional[ReleaseItem]) -> Optional[Gio.Menu]:
-        if not item:
-            return None
-        menu_model = Gio.Menu.new()
-        star_label = "Unstar" if item.starred else "Star"
-        menu_model.append(star_label, "context.toggle_star")
-        menu_model.append("Open with Amberol", "context.open_release")
-        menu_model.append("Reveal in Files", "context.reveal")
-        menu_model.append("Move to Trash", "context.trash_release")
-        return menu_model
+        return self._context_menu_widget.get_context_menu_model(item)
 
     def on_toggle_star_action(
         self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
@@ -306,8 +247,7 @@ class MusicWindow(PickerWindow):
         return [self._progress_widget]
 
     def _on_star_filter_toggled(self, star_button: StarButton, starred: bool) -> None:
-        if self._filter:
-            self._filter.on_star_filter_toggled(starred)
+        self._filter.on_star_filter_toggled(starred)
 
     def _show_progress(self) -> None:
         self._progress_widget.set_visible(True)
@@ -324,8 +264,7 @@ class MusicWindow(PickerWindow):
             self._hide_progress()
 
     def _refresh_ui_with_sorted_releases(self) -> None:
-        if self._filter:
-            self._filter.refresh_ui_with_sorted_releases()
+        self._filter.refresh_ui_with_sorted_releases()
 
     def on_close_request(self) -> bool:
         self._operations_coordinator.clear_all_operations()
@@ -337,15 +276,20 @@ class MusicWindow(PickerWindow):
         releases_data = convert_release_items_to_data(self._all_releases)
         self._scanner.cache.save_to_cache(releases_data)
 
-    def toggle_starred(self, item: Any) -> None:
+    def toggle_starred(self, item: ReleaseItem) -> None:
+        self._starring_manager.toggle_release_starred(item.path)
+        item.set_property(
+            "starred", self._starring_manager.is_release_starred(item.path)
+        )
+
+    def set_starred(self, item: Any, starred: bool) -> None:
         if not item:
             return
-        print("Toggling starred status for:", item.title)
-        # self._starring_manager.toggle_release_starred(item.path)
-        item.set_property("starred", not item.starred)
-        # item.set_property('starred', self._starring_manager.is_release_starred(item.path))
-        # star_button = item.get_list_item().get_child().get_first_child()
-        # star_button.set_starred(item.get_property('starred'))
+        if starred:
+            self._starring_manager.star_release(item.path)
+        else:
+            self._starring_manager.unstar_release(item.path)
+        item.set_property("starred", starred)
 
     def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
         if keyval == Gdk.KEY_space:
