@@ -339,15 +339,6 @@ class ProcessManagerWindow(PickerWindow):
         self._should_refresh = False
         return False
 
-    def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
-        if keyval == Gdk.KEY_o and state & Gdk.ModifierType.CONTROL_MASK and (not state & Gdk.ModifierType.SHIFT_MASK) and (not state & Gdk.ModifierType.ALT_MASK):
-            selected_item = self.get_selected_item()
-            if selected_item:
-                menu_model = self.get_context_menu_model(selected_item)
-                if menu_model:
-                    self.show_context_menu()
-            return True
-        return False
 
 class ProcessManagerApplication(Adw.Application):
 

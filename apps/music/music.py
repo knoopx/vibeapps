@@ -291,13 +291,15 @@ class MusicWindow(PickerWindow):
             self._starring_manager.unstar_release(item.path)
         item.set_property("starred", starred)
 
-    def on_additional_key_pressed(self, keyval, keycode, state) -> bool:
+    def on_listview_key_pressed(
+        self,
+        controller: Gtk.EventControllerKey,
+        keyval: int,
+        keycode: int,
+        state: Gdk.ModifierType,
+    ) -> bool:
         if keyval == Gdk.KEY_space:
             selected_item = self.get_selected_item()
-            if selected_item:
-                self.toggle_starred(selected_item)
-                return True
-            print(selected_item)
             if selected_item:
                 self.toggle_starred(selected_item)
                 return True

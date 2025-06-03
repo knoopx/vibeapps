@@ -90,6 +90,11 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._scrolled_window = scrolled_window
         self._content_stack.add_named(scrolled_window, "results")
 
+        controller = Gtk.EventControllerKey()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        controller.connect("key-pressed", self.on_listview_key_pressed)
+        self._list_view.add_controller(controller)
+
     def _setup_status_pages(self) -> None:
         loading_page = Adw.StatusPage(
             title="Loading...", icon_name=self.get_loading_icon()
@@ -128,7 +133,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             search_shortcut_controller.add_shortcut(context_menu_shortcut)
             self._search_entry.add_controller(search_shortcut_controller)
         window_key_controller = Gtk.EventControllerKey()
-        window_key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         window_key_controller.connect("key-pressed", self._on_window_key_pressed)
         self.add_controller(window_key_controller)
         self._list_view.connect("activate", self._on_list_view_activate)
@@ -269,6 +273,15 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             return True
         return False
 
+    def on_listview_key_pressed(
+        self,
+        controller: Gtk.EventControllerKey,
+        keyval: int,
+        keycode: int,
+        state: Gdk.ModifierType,
+    ):
+        return False
+
     def _on_window_key_pressed(
         self,
         controller: Gtk.EventControllerKey,
@@ -287,7 +300,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             text_length = len(self._search_entry.get_text())
             self._search_entry.set_position(text_length)
             return True
-        return self.on_additional_key_pressed(keyval, keycode, state)
+
+        return False
 
     def _on_list_view_clicked(
         self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float
@@ -444,11 +458,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def bind_list_item(self, list_item: Gtk.ListItem, item: Any) -> None:
         pass
-
-    def on_additional_key_pressed(
-        self, keyval: int, keycode: int, state: Gdk.ModifierType
-    ) -> bool:
-        return False
 
     def _items_equal(self, item1: Any, item2: Any) -> bool:
         return item1 == item2

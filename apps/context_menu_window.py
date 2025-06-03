@@ -81,15 +81,3 @@ class ContextMenuWindow(PickerWindow):
         if hasattr(self, '_list_view'):
             self._list_view.grab_focus()
         return False
-
-    def on_additional_key_pressed(self, keyval, keycode, state):
-        from gi.repository import Gdk
-        if keyval == Gdk.KEY_Escape:
-            self.close()
-            return True
-        if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
-            selected_item = self.get_selected_item()
-            if selected_item:
-                self.on_item_activated(selected_item)
-                return True
-        return False
