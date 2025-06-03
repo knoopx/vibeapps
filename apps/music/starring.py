@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Set
+from typing import Set, Optional
 from serialization import APP_ID
 
 class StarringManager:
 
-    def __init__(self, config_dir: Path=None):
+    def __init__(self, config_dir: Optional[Path] = None) -> None:
         if config_dir is None:
             config_dir = Path.home() / '.config' / APP_ID
         self.config_dir = config_dir
