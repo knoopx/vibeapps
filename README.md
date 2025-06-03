@@ -58,6 +58,12 @@ A minimal web browser shell for wrapping web applications in GTK windows.
 
 ![Webkit Shell](apps/webkit-shell/screenshot.png)
 
+### Windows
+
+A window manager interface for niri with search, focus, and close functionality.
+
+![Windows](apps/windows/screenshot.png)
+
 ### Utilities
 
 - **md2html**: A markdown to HTML converter with support for GFM, wiki-links, and syntax highlighting. Used by Chat and Notes.
@@ -144,6 +150,7 @@ The following programs can be enabled individually:
 - `reminder` - Calendar event creation interface
 - `scratchpad` - Interactive mathematical calculator
 - `webkit-shell` - Minimal web browser for wrapping web applications
+- `windows` - Window manager for niri with focus/close actions
 
 - `md2html` - Advanced markdown to HTML converter
 - `raise-or-open-url` - Smart URL/window management
@@ -162,6 +169,7 @@ Complete example configuration:
     music.enable = true;
     chat.enable = true;
     nix-packages.enable = true;
+    windows.enable = true;
   };
 }
 ```
@@ -172,7 +180,6 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 
 - OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
 - Passwords app (libsecret)
-- Niri Windows app
 - Diffusers app
 - Music
   - Collections (list of albums, one per file)

@@ -17,6 +17,7 @@
     process-manager = pkgs.callPackage ./apps/process-manager/process-manager.nix {};
     nix-packages = pkgs.callPackage ./apps/nix-packages/nix-packages.nix {};
     scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
+    windows = pkgs.callPackage ./apps/windows/windows.nix {};
 
     md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
     raise-or-open-url = pkgs.callPackage ./utils/raise-or-open-url/raise-or-open-url.nix {};
@@ -35,6 +36,7 @@
     "raise-or-open-url"
     "nix-packages"
     "scratchpad"
+    "windows"
   ];
 
   # Create options for each program
