@@ -27,18 +27,22 @@ GObject.type_ensure(ReleaseItem)
 
 class ReleaseData:
 
-    def __init__(self, title: str, path: str, track_count: int = 0):
+    def __init__(self, title: str, path: str, track_count: int = 0, starred: bool = False):
         self.title = title
         self.path = path
         self.track_count = track_count
+        self.starred = starred
 
     def to_dict(self) -> dict:
-        return {"title": self.title, "path": self.path, "track_count": self.track_count}
+        return {"title": self.title, "path": self.path, "track_count": self.track_count, "starred": self.starred}
 
     @classmethod
     def from_dict(cls, data: dict) -> "ReleaseData":
         return cls(
-            title=data["title"], path=data["path"], track_count=data["track_count"]
+            title=data["title"],
+            path=data["path"],
+            track_count=data["track_count"],
+            starred=data.get("starred", False)
         )
 
     def __eq__(self, other) -> bool:
@@ -65,5 +69,5 @@ def create_release_item_converter(starring_manager):
 
 def convert_release_items_to_data(release_items) -> List["ReleaseData"]:
     return [
-        ReleaseData(item.title, item.path, item.track_count) for item in release_items
+        ReleaseData(item.title, item.path, item.track_count, item.starred) for item in release_items
     ]
