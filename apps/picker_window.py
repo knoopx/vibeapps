@@ -16,6 +16,9 @@ class GObjectABCMeta(type(GObject.Object), type(ABC)):
 
 
 class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
+    # ============================================================================
+    # INITIALIZATION & SETUP
+    # ============================================================================
 
     def __init__(
         self,
@@ -44,6 +47,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         if self._enable_context_menu:
             self._setup_context_menu_actions()
         self.load_initial_data()
+
+    # ============================================================================
+    # UI SETUP METHODS
+    # ============================================================================
 
     def _setup_ui(self) -> None:
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -140,6 +147,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self.connect("close-request", self._on_close_request)
         self.connect("map", self._on_window_map)
 
+    # ============================================================================
+    # CONTEXT MENU METHODS
+    # ============================================================================
+
     def _setup_context_menu_actions(self) -> None:
         self._context_action_group = Gio.SimpleActionGroup()
         for action_name, method_name in self.get_context_menu_actions().items():
@@ -206,22 +217,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         )
         widget.add_controller(context_menu_gesture)
 
-    def _on_item_right_click(
-        self,
-        gesture: Gtk.GestureClick,
-        n_press: int,
-        x: float,
-        y: float,
-        item: Any,
-        list_item: Optional[Gtk.ListItem] = None,
-    ) -> None:
-        if n_press == 1:
-            if list_item:
-                position = list_item.get_position()
-                if self._selection_model.get_selected() != position:
-                    self._selection_model.set_selected(position)
-            anchor_for_menu = gesture.get_widget()
-            self.show_context_menu(anchor_widget=anchor_for_menu)
+    # ============================================================================
+    # EVENT HANDLERS
+    # ============================================================================
 
     def _on_window_map(self, window: Gtk.Window) -> None:
         self._search_entry.grab_focus()
@@ -238,18 +236,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._search_delay_id = GLib.timeout_add(
             self._search_delay_ms, self._apply_search, query
         )
-
-    def _apply_empty_search(self) -> None:
-        self.on_search_cleared()
-        if self._item_store.get_n_items() > 0:
-            self._show_results()
-        else:
-            self._show_empty()
-
-    def _apply_search(self, query: str) -> bool:
-        self._search_delay_id = 0
-        self.on_search_changed(query)
-        return GLib.SOURCE_REMOVE
 
     def _on_search_activated(self, entry: Gtk.SearchEntry) -> None:
         selected_pos = self._selection_model.get_selected()
@@ -273,15 +259,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             return True
         return False
 
-    def on_listview_key_pressed(
-        self,
-        controller: Gtk.EventControllerKey,
-        keyval: int,
-        keycode: int,
-        state: Gdk.ModifierType,
-    ):
-        return False
-
     def _on_window_key_pressed(
         self,
         controller: Gtk.EventControllerKey,
@@ -303,33 +280,29 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
         return False
 
+    def on_listview_key_pressed(
+        self,
+        controller: Gtk.EventControllerKey,
+        keyval: int,
+        keycode: int,
+        state: Gdk.ModifierType,
+    ):
+        return False
+
     def _on_list_view_clicked(
         self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float
     ) -> None:
         self._list_view.grab_focus()
-
-    def _forward_navigation_to_list(
-        self, keyval: int, keycode: int, state: Gdk.ModifierType
-    ) -> None:
-        self._list_view.grab_focus()
-        if (
-            self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION
-            and self._item_store.get_n_items() > 0
-        ):
-            self._selection_model.set_selected(0)
-
-    def _on_selection_changed(
-        self, selection_model: Gtk.SelectionModel, position: int, n_items: int
-    ) -> None:
-        pass
 
     def _on_list_view_activate(self, list_view: Gtk.ListView, position: int) -> None:
         item = self._item_store.get_item(position)
         if item:
             self.on_item_activated(item)
 
-    def _on_close_request(self, window: Gtk.Window) -> bool:
-        return self.on_close_request()
+    def _on_selection_changed(
+        self, selection_model: Gtk.SelectionModel, position: int, n_items: int
+    ) -> None:
+        pass
 
     def _on_list_item_setup(
         self, factory: Gtk.ListItemFactory, list_item: Gtk.ListItem
@@ -344,6 +317,56 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         child_widget = list_item.get_child()
         if child_widget and item:
             self._setup_context_menu_gesture(child_widget, item, list_item)
+
+    def _on_item_right_click(
+        self,
+        gesture: Gtk.GestureClick,
+        n_press: int,
+        x: float,
+        y: float,
+        item: Any,
+        list_item: Optional[Gtk.ListItem] = None,
+    ) -> None:
+        if n_press == 1:
+            if list_item:
+                position = list_item.get_position()
+                if self._selection_model.get_selected() != position:
+                    self._selection_model.set_selected(position)
+            anchor_for_menu = gesture.get_widget()
+            self.show_context_menu(anchor_widget=anchor_for_menu)
+
+    def _on_close_request(self, window: Gtk.Window) -> bool:
+        return self.on_close_request()
+
+    # ============================================================================
+    # SEARCH & NAVIGATION HELPERS
+    # ============================================================================
+
+    def _apply_empty_search(self) -> None:
+        self.on_search_cleared()
+        if self._item_store.get_n_items() > 0:
+            self._show_results()
+        else:
+            self._show_empty()
+
+    def _apply_search(self, query: str) -> bool:
+        self._search_delay_id = 0
+        self.on_search_changed(query)
+        return GLib.SOURCE_REMOVE
+
+    def _forward_navigation_to_list(
+        self, keyval: int, keycode: int, state: Gdk.ModifierType
+    ) -> None:
+        self._list_view.grab_focus()
+        if (
+            self._selection_model.get_selected() == Gtk.INVALID_LIST_POSITION
+            and self._item_store.get_n_items() > 0
+        ):
+            self._selection_model.set_selected(0)
+
+    # ============================================================================
+    # STATE MANAGEMENT METHODS
+    # ============================================================================
 
     def _show_loading(self) -> None:
         self._is_loading = True
@@ -370,6 +393,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self._error_page.set_description(message)
         self._content_stack.set_visible_child_name("error")
 
+    # ============================================================================
+    # ITEM MANAGEMENT METHODS
+    # ============================================================================
+
     def add_item(self, item: Any) -> None:
         self._item_store.append(item)
 
@@ -381,6 +408,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         if selected_pos != Gtk.INVALID_LIST_POSITION:
             return self._item_store.get_item(selected_pos)
         return None
+
+    # ============================================================================
+    # PUBLIC API METHODS
+    # ============================================================================
 
     def set_loading(self, loading: bool) -> None:
         if loading:
@@ -396,8 +427,20 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def get_search_text(self) -> str:
         return self._search_entry.get_text().strip()
 
+    # ============================================================================
+    # ABSTRACT METHODS (MUST BE IMPLEMENTED BY SUBCLASSES)
+    # ============================================================================
+
     @abstractmethod
     def get_item_type(self) -> type:
+        pass
+
+    @abstractmethod
+    def setup_list_item(self, list_item: Gtk.ListItem) -> None:
+        pass
+
+    @abstractmethod
+    def bind_list_item(self, list_item: Gtk.ListItem, item: Any) -> None:
         pass
 
     @abstractmethod
@@ -420,6 +463,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def get_context_menu_model(self, item: Any) -> Optional[Gio.Menu]:
         pass
 
+    # ============================================================================
+    # VIRTUAL/HOOK METHODS (CAN BE OVERRIDDEN BY SUBCLASSES)
+    # ============================================================================
+
     def on_search_cleared(self) -> None:
         pass
 
@@ -431,6 +478,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def on_window_shown(self) -> None:
         pass
+
+    # ============================================================================
+    # CONFIGURATION METHODS (CAN BE OVERRIDDEN FOR CUSTOMIZATION)
+    # ============================================================================
 
     def get_loading_icon(self) -> str:
         return "find-location-symbolic"
@@ -452,12 +503,3 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def get_header_bar_right_widgets(self) -> List[Gtk.Widget]:
         return []
-
-    def setup_list_item(self, list_item: Gtk.ListItem) -> None:
-        pass
-
-    def bind_list_item(self, list_item: Gtk.ListItem, item: Any) -> None:
-        pass
-
-    def _items_equal(self, item1: Any, item2: Any) -> bool:
-        return item1 == item2
