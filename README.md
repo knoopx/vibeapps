@@ -174,6 +174,8 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 - Passwords app (libsecret)
 - Niri Windows app
 - Diffusers app
+- Music
+  - Collections (list of albums, one per file)
 - Events app
   - uses evolution-data-server
   - Search also parses time and appies filters
