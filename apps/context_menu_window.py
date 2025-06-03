@@ -55,7 +55,7 @@ class ContextMenuWindow(PickerWindow):
     def get_context_menu_model(self, item):
         return None
 
-    def _on_list_item_setup(self, factory, list_item):
+    def setup_list_item(self, list_item):
         label = Gtk.Label()
         label.set_halign(Gtk.Align.START)
         label.set_margin_top(8)
@@ -64,11 +64,10 @@ class ContextMenuWindow(PickerWindow):
         label.set_margin_end(12)
         list_item.set_child(label)
 
-    def _on_list_item_bind(self, factory, list_item):
-        item = list_item.get_item()
+    def bind_list_item(self, list_item, item):
         label = list_item.get_child()
-        if isinstance(item, ContextMenuAction):
-            label.set_text(item.label)
+        assert isinstance(label, Gtk.Label)
+        label.set_text(item.label)
 
     def _load_actions_immediately(self):
         for action in self._actions:

@@ -146,9 +146,7 @@ class MusicWindow(PickerWindow):
             return
 
         widget = list_item.get_child()
-        if not isinstance(widget, ReleaseListItemWidget):
-            return
-
+        assert isinstance(widget, ReleaseListItemWidget)
         widget.bind_to_item(item)
 
     def get_context_menu_actions(self) -> Dict[str, str]:
