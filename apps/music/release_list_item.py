@@ -2,6 +2,7 @@ from typing import Callable, Optional, List
 from gi.repository import Gtk, Pango
 from star_button import StarButton
 from serialization import ReleaseItem
+from badge import Badge
 
 
 class ReleaseListItem(Gtk.Box):
@@ -35,11 +36,10 @@ class ReleaseListItem(Gtk.Box):
         )
         self._title_label.add_css_class("heading")
         self._info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-
-        # Collections box for badges - positioned before track count
-        self._collections_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self._collections_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=4
+        )
         self._info_box.append(self._collections_box)
-
         self._track_count_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         self._track_count_label.add_css_class("dim-label")
         self._track_count_label.add_css_class("caption")
@@ -48,20 +48,10 @@ class ReleaseListItem(Gtk.Box):
         self._content_box.append(self._info_box)
         self.append(self._content_box)
 
-    def _create_collection_badge(self, collection_name: str) -> Gtk.Label:
-        """Create a styled badge for a collection name."""
-        badge = Gtk.Label(label=collection_name)
-        badge.add_css_class("dim-label")
-        badge.add_css_class("caption")
-        badge.add_css_class("badge")  # Add a custom badge class for styling
-        badge.set_margin_start(2)
-        badge.set_margin_end(2)
-        badge.set_margin_top(1)
-        badge.set_margin_bottom(1)
-        return badge
+    def _create_collection_badge(self, collection_name: str) -> Badge:
+        return Badge(collection_name)
 
     def _clear_collection_badges(self):
-        """Remove all existing collection badges."""
         child = self._collections_box.get_first_child()
         while child:
             next_child = child.get_next_sibling()
@@ -73,21 +63,15 @@ class ReleaseListItem(Gtk.Box):
             self._on_star_toggled(star_button, starred)
 
     def bind_to_item(self, item: ReleaseItem, collections: Optional[List[str]] = None):
-        # Disconnect from previous item if any
         if self._current_item and self._item_starred_connection_id:
             self._current_item.disconnect(self._item_starred_connection_id)
             self._item_starred_connection_id = None
-
         self._current_item = item
-
         self._item_starred_connection_id = item.connect(
             "notify::starred", self._on_item_starred_changed
         )
-
         self._title_label.set_text(item.title)
         self._star_button.set_starred(item.starred)
-
-        # Update collections display with badges
         self._clear_collection_badges()
         if collections:
             for collection in sorted(collections):
@@ -96,12 +80,10 @@ class ReleaseListItem(Gtk.Box):
             self._collections_box.set_visible(True)
         else:
             self._collections_box.set_visible(False)
-
         track_text = (
             f"{item.track_count} tracks" if item.track_count != 1 else "1 track"
         )
         self._track_count_label.set_text(track_text)
 
     def _on_item_starred_changed(self, item, pspec):
-        # Update the star button when the item's starred property changes
         self._star_button.set_starred(item.starred)

@@ -44,6 +44,7 @@
       cp ${../context_menu_window.py} $out/${pkgs.python3.sitePackages}/context_menu_window.py
       cp ${../star_button.py} $out/${pkgs.python3.sitePackages}/star_button.py
       cp ${../circular_progress.py} $out/${pkgs.python3.sitePackages}/circular_progress.py
+      cp ${../badge.py} $out/${pkgs.python3.sitePackages}/badge.py
 
       # Install main executable
       cp music.py $out/bin/music

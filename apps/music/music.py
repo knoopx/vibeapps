@@ -10,6 +10,7 @@ gi.require_version("Pango", "1.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gtk, Adw, GLib, Gio, Gdk
+
 from picker_window import PickerWindow
 from star_button import StarButton
 from circular_progress import CircularProgress
@@ -22,6 +23,7 @@ from serialization import APP_ID, ReleaseItem
 from release_list_item import ReleaseListItem
 from release_context_menu import ReleaseContextMenu
 from collection_picker_window import CollectionPickerWindow
+from badge import Badge
 
 
 class MusicWindow(PickerWindow):
@@ -81,19 +83,7 @@ class MusicWindow(PickerWindow):
 
     def _setup_css(self) -> None:
         css_provider = Gtk.CssProvider()
-        css_content = (
-            StarButton.get_css_style()
-            + """
-        .badge {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 0.75em;
-            font-weight: bold;
-            margin: 0px 2px;
-        }
-        """
-        )
+        css_content = StarButton.get_css_style() + Badge.get_css_style()
         css_provider.load_from_data(css_content.encode())
         Gtk.StyleContext.add_provider_for_display(
             self.get_display(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
