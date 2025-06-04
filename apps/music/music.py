@@ -15,7 +15,7 @@ from picker_window import PickerWindow
 from star_button import StarButton
 from circular_progress import CircularProgress
 from scanning import MusicScanner, ScanningCoordinator
-from starring import StarringManager
+from collection_manager import CollectionManager
 from filtering import MusicFilter, OperationsCoordinator
 from serialization import APP_ID, ReleaseItem
 from release_list_item_widget import ReleaseListItemWidget
@@ -27,10 +27,10 @@ class MusicWindow(PickerWindow):
     def __init__(self, **kwargs) -> None:
         self._all_releases = []
         self._music_dir = Path.home() / "Music"
-        self._starring_manager = StarringManager()
-        self._scanner = MusicScanner(
-            self._music_dir, self._starring_manager.is_release_starred
+        self._starred = CollectionManager(
+            Path.home() / ".config" / APP_ID / "starred.json"
         )
+        self._scanner = MusicScanner(self._music_dir, self._starred.contains)
         self._settings = Gio.Settings.new("net.knoopx.music")
         self._progress_widget = CircularProgress()
         self._progress_widget.set_visible(False)
@@ -109,7 +109,7 @@ class MusicWindow(PickerWindow):
     def _create_release_item_converter(self):
         from serialization import create_release_item_converter
 
-        return create_release_item_converter(self._starring_manager)
+        return create_release_item_converter(self._starred)
 
     def on_search_changed(self, query: str) -> None:
         self._filter.search_changed(query)
@@ -275,18 +275,16 @@ class MusicWindow(PickerWindow):
         self._scanner.cache.save_to_cache(releases_data)
 
     def toggle_starred(self, item: ReleaseItem) -> None:
-        self._starring_manager.toggle_release_starred(item.path)
-        item.set_property(
-            "starred", self._starring_manager.is_release_starred(item.path)
-        )
+        self._starred.toggle(item.path)
+        item.set_property("starred", self._starred.contains(item.path))
 
     def set_starred(self, item: Any, starred: bool) -> None:
         if not item:
             return
         if starred:
-            self._starring_manager.star_release(item.path)
+            self._starred.add(item.path)
         else:
-            self._starring_manager.unstar_release(item.path)
+            self._starred.remove(item.path)
         item.set_property("starred", starred)
 
     def on_listview_key_pressed(

@@ -61,7 +61,7 @@ def create_release_item_converter(starring_manager):
             title=release_data.title,
             path=release_data.path,
             track_count=release_data.track_count,
-            starred=starring_manager.is_release_starred(release_data.path),
+            starred=starring_manager.contains(release_data.path),
         )
 
     return converter
