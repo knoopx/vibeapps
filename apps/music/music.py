@@ -2,7 +2,7 @@
 import gi
 import sys
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Any
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -49,7 +49,6 @@ class MusicWindow(PickerWindow):
         )
         self._context_menu_widget = ReleaseContextMenu(self)
         super().__init__(title="Music", search_placeholder="Search music...", **kwargs)
-        self._context_menu_widget.setup_actions()
         self._setup_keyboard_shortcuts()
         self._setup_css()
 
@@ -157,9 +156,6 @@ class MusicWindow(PickerWindow):
         collections = self._collections.lookup(item.path)
 
         widget.bind_to_item(item, [c.name for c in collections])
-
-    def get_context_menu_actions(self) -> Dict[str, str]:
-        return self._context_menu_widget.get_context_menu_actions()
 
     def get_context_menu_model(self, item: Optional[ReleaseItem]) -> Optional[Gio.Menu]:
         return self._context_menu_widget.get_context_menu_model(item)

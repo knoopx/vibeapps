@@ -267,23 +267,15 @@ class WindowsWindow(PickerWindow):
     def get_empty_description(self):
         return 'No windows are currently open.'
 
-    def get_context_menu_actions(self) -> dict:
-        return {
-            'focus_window': 'on_focus_window_action',
-            'close_window': 'on_close_window_action',
-            'copy_window_id': 'on_copy_window_id_action',
-            'copy_title': 'on_copy_title_action',
-        }
-
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item or item.window_id == 0:
             return None
 
         menu_model = Gio.Menu.new()
-        menu_model.append('Focus Window', 'context.focus_window')
-        menu_model.append('Close Window', 'context.close_window')
-        menu_model.append('Copy Window ID', 'context.copy_window_id')
-        menu_model.append('Copy Title', 'context.copy_title')
+        menu_model.append('Focus Window', 'context.on_focus_window_action')
+        menu_model.append('Close Window', 'context.on_close_window_action')
+        menu_model.append('Copy Window ID', 'context.on_copy_window_id_action')
+        menu_model.append('Copy Title', 'context.on_copy_title_action')
         return menu_model
 
     def on_focus_window_action(self, action, param):

@@ -197,17 +197,14 @@ class ProcessManagerWindow(PickerWindow):
     def get_empty_description(self):
         return 'Use the search bar to filter processes.'
 
-    def get_context_menu_actions(self) -> dict:
-        return {'kill_process': 'on_kill_process_action', 'terminate_process': 'on_terminate_process_action', 'show_details': 'on_show_details_action', 'copy_pid': 'on_copy_pid_action', 'copy_command': 'on_copy_command_action'}
-
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item or item.pid == 0:
             return None
         menu_model = Gio.Menu.new()
-        menu_model.append('Terminate Process', 'context.terminate_process')
-        menu_model.append('Kill Process', 'context.kill_process')
-        menu_model.append('Copy PID', 'context.copy_pid')
-        menu_model.append('Copy Command', 'context.copy_command')
+        menu_model.append('Terminate Process', 'context.on_terminate_process_action')
+        menu_model.append('Kill Process', 'context.on_kill_process_action')
+        menu_model.append('Copy PID', 'context.on_copy_pid_action')
+        menu_model.append('Copy Command', 'context.on_copy_command_action')
         return menu_model
 
     def on_kill_process_action(self, action, param):

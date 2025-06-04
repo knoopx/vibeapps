@@ -164,11 +164,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def _setup_context_menu_actions(self) -> None:
         self._context_action_group = Gio.SimpleActionGroup()
-        for action_name, method_name in self.get_context_menu_actions().items():
-            action = Gio.SimpleAction.new(action_name, None)
-            if hasattr(self, method_name):
-                action.connect("activate", getattr(self, method_name))
-                self._context_action_group.add_action(action)
         self.insert_action_group("context", self._context_action_group)
 
     def _show_context_menu_action_callback(self, widget: Gtk.Widget, args: Any) -> bool:
@@ -177,11 +172,27 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     def show_context_menu(self, anchor_widget: Optional[Gtk.Widget] = None) -> None:
         selected_item = self.get_selected_item()
+
         if not selected_item:
             return
+
         menu_model = self.get_context_menu_model(selected_item)
         if not menu_model:
             return
+
+        for i in range(menu_model.get_n_items()):
+            action = menu_model.get_item_attribute_value(i, "action", None)
+            if action:
+                action_str = action.get_string()
+                if action_str.startswith("context."):
+                    method_name = action_str.replace("context.", "")
+                    if hasattr(
+                        self, method_name
+                    ) and not self._context_action_group.has_action(method_name):
+                        gio_action = Gio.SimpleAction.new(method_name, None)
+                        gio_action.connect("activate", getattr(self, method_name))
+                        self._context_action_group.add_action(gio_action)
+
         from context_menu_window import ContextMenuWindow, ContextMenuAction
 
         actions = []
@@ -521,10 +532,6 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
 
     @abstractmethod
     def on_search_changed(self, query: str) -> None:
-        pass
-
-    @abstractmethod
-    def get_context_menu_actions(self) -> dict:
         pass
 
     @abstractmethod

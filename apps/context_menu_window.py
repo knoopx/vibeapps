@@ -67,9 +67,6 @@ class ContextMenuWindow(PickerWindow):
             self.close()
             GLib.idle_add(item.callback)
 
-    def get_context_menu_actions(self):
-        return {}
-
     def get_context_menu_model(self, item):
         return None
 

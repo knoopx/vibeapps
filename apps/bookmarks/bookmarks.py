@@ -79,16 +79,13 @@ class BookmarksWindow(PickerWindow):
         title_label.set_markup(f'<b>{GLib.markup_escape_text(item.title)}</b>')
         url_label.set_text(item.url)
 
-    def get_context_menu_actions(self) -> dict:
-        return {'open_bookmark': 'on_open_bookmark_action', 'copy_url': 'on_copy_url_action', 'copy_title': 'on_copy_title_action'}
-
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item:
             return None
         menu_model = Gio.Menu.new()
-        menu_model.append('Open Bookmark', 'context.open_bookmark')
-        menu_model.append('Copy URL', 'context.copy_url')
-        menu_model.append('Copy Title', 'context.copy_title')
+        menu_model.append('Open Bookmark', 'context.on_open_bookmark_action')
+        menu_model.append('Copy URL', 'context.on_copy_url_action')
+        menu_model.append('Copy Title', 'context.on_copy_title_action')
         return menu_model
 
     def on_open_bookmark_action(self, action, param):

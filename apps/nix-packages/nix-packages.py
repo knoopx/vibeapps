@@ -90,17 +90,14 @@ class NixPackagesWindow(PickerWindow):
     def get_empty_description(self):
         return 'Type your query in the search bar above.'
 
-    def get_context_menu_actions(self) -> dict:
-        return {'open_homepage': 'on_open_homepage_action', 'copy_name': 'on_copy_name_action', 'copy_description': 'on_copy_description_action'}
-
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item:
             return None
         menu_model = Gio.Menu.new()
         if item.homepage:
-            menu_model.append('Open Homepage', 'context.open_homepage')
-        menu_model.append('Copy Package Name', 'context.copy_name')
-        menu_model.append('Copy Description', 'context.copy_description')
+            menu_model.append('Open Homepage', 'context.on_open_homepage_action')
+        menu_model.append('Copy Package Name', 'context.on_copy_name_action')
+        menu_model.append('Copy Description', 'context.on_copy_description_action')
         return menu_model
 
     def on_open_homepage_action(self, action, param):

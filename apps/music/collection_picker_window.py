@@ -106,9 +106,6 @@ class CollectionPickerWindow(PickerWindow):
         self.close()
         GLib.idle_add(lambda: self._on_collection_selected(collection_name))
 
-    def get_context_menu_actions(self):
-        return {}
-
     def get_context_menu_model(self, item):
         return None
 
