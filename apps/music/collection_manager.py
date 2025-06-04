@@ -46,7 +46,7 @@ class CollectionManager:
         return name in self._collections
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._collections.keys())
+        return iter(sorted(self._collections.keys()))
 
     def __len__(self) -> int:
         return len(self._collections)
@@ -66,8 +66,9 @@ class CollectionManager:
             return default
 
     def lookup(self, release_path: str) -> list[Collection]:
-        return [
+        collections = [
             collection
             for collection in self._collections.values()
             if collection.contains(release_path)
         ]
+        return sorted(collections, key=lambda c: c.name)

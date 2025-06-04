@@ -49,7 +49,7 @@ class CollectionPickerWindow(PickerWindow):
         return CollectionItem
 
     def load_initial_data(self):
-        self._existing_collections = list(self._collections_manager.keys())
+        self._existing_collections = sorted(self._collections_manager.keys())
         self._update_collection_list("")
 
     def on_search_changed(self, query: str):
