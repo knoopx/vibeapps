@@ -6,7 +6,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, GObject, Pango
 from picker_window import PickerWindow, PickerItem
-from collections_manager import CollectionsManager
+from collection_manager import CollectionManager
 from typing import Callable
 
 
@@ -26,11 +26,11 @@ class CollectionPickerWindow(PickerWindow):
     def __init__(
         self,
         parent_window: Gtk.Window,
-        collections_manager: CollectionsManager,
+        collection_manager: CollectionManager,
         on_collection_selected: Callable[[str], None],
         **kwargs,
     ):
-        self._collections_manager = collections_manager
+        self._collections_manager = collection_manager
         self._on_collection_selected = on_collection_selected
         self._existing_collections = []
         super().__init__(

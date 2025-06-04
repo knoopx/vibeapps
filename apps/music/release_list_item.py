@@ -37,7 +37,7 @@ class ReleaseListItem(Gtk.Box):
         self._title_label.add_css_class("heading")
         self._info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._collections_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=4
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=2
         )
         self._info_box.append(self._collections_box)
         self._track_count_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)

@@ -16,8 +16,8 @@ from star_button import StarButton
 from circular_progress import CircularProgress
 from music_scanner import MusicScanner
 from scanning_coordinator import ScanningCoordinator
+from collection import Collection
 from collection_manager import CollectionManager
-from collections_manager import CollectionsManager
 from filtering import MusicFilter, OperationsCoordinator
 from serialization import APP_ID, ReleaseItem
 from release_list_item import ReleaseListItem
@@ -32,10 +32,10 @@ class MusicWindow(PickerWindow):
         self._all_releases = []
         self._music_dir = Path.home() / "Music"
         self._selected_collection = ""
-        self._starred = CollectionManager(
+        self._starred = Collection(
             Path.home() / ".config" / APP_ID / "starred.json"
         )
-        self._collections = CollectionsManager(
+        self._collections = CollectionManager(
             Path.home() / ".config" / APP_ID / "collections"
         )
         self._scanner = MusicScanner(self._music_dir)
@@ -239,31 +239,13 @@ class MusicWindow(PickerWindow):
             return
 
         def on_collection_selected(collection_name: str):
-            try:
-                collection = self._collections[collection_name]
-                collection.add(selected_item.path)
-                self._refresh_collection_dropdown()
-                dialog = Adw.MessageDialog.new(
-                    self,
-                    "Added to Collection",
-                    f"'{selected_item.title}' has been added to '{collection_name}'",
-                )
-                dialog.add_response("ok", "OK")
-                dialog.set_default_response("ok")
-                dialog.present()
-            except Exception as e:
-                error_dialog = Adw.MessageDialog.new(
-                    self,
-                    "Error Adding to Collection",
-                    f"Could not add '{selected_item.title}' to collection:\n{str(e)}",
-                )
-                error_dialog.add_response("ok", "OK")
-                error_dialog.set_default_response("ok")
-                error_dialog.present()
+            collection = self._collections[collection_name]
+            collection.add(selected_item.path)
+            self._refresh_collection_dropdown()
 
         picker = CollectionPickerWindow(
             parent_window=self,
-            collections_manager=self._collections,
+            collection_manager=self._collections,
             on_collection_selected=on_collection_selected,
         )
         picker.present()
