@@ -17,13 +17,14 @@ find . -type f -iname '*.nfo' -exec grep -l -i "funk" {} + | xargs -n1 dirname |
 find . -type f -iname '*.nfo' -exec grep -l -i "hip-hop" {} + | xargs -n1 dirname | xargs -n1 basename | jq -R 'ascii_downcase' | jq -s . > ~/.config/net.knoopx.music/collections/Hip-Hop.json
 
 find . -type f -iname '*.nfo' -exec grep -l -i "folk" {} + | xargs -n1 dirname | xargs -n1 basename | jq -R 'ascii_downcase' | jq -s . > ~/.config/net.knoopx.music/collections/Folk.json
+
+find . -type f -iname '*.nfo' -exec grep -l -i "pop" {} + | xargs -n1 dirname | xargs -n1 basename | jq -R 'ascii_downcase' | jq -s . > ~/.config/net.knoopx.music/collections/Pop.json
+
 ```
 
 
 # TODO
 
 * show title tip on hover
-* remove from collection
 - sidebar + play queue?
-- Collections (list of albums, one per file)
 - rateyourmusic/discogs

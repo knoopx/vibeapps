@@ -331,8 +331,8 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         state: Gdk.ModifierType,
     ) -> bool:
         if keyval == Gdk.KEY_Escape:
-            self.close()
-            return True
+            return self.on_escape_pressed()
+
         elif keyval == Gdk.KEY_Up or keyval == Gdk.KEY_Down:
             self._forward_navigation_to_list(keyval, keycode, state)
             return True
@@ -553,8 +553,9 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def on_search_cleared(self) -> None:
         pass
 
-    def on_escape_pressed(self) -> None:
+    def on_escape_pressed(self) -> bool:
         self.close()
+        return True
 
     def on_close_request(self) -> bool:
         return False

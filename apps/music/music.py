@@ -385,6 +385,10 @@ class MusicWindow(PickerWindow):
                 return True
         return False
 
+    def on_escape_pressed(self) -> None:
+        """Clear the search instead of closing the app"""
+        self._search_entry.set_text("")
+
     def _refresh_collection_dropdown(self) -> None:
         if hasattr(self, "_collection_dropdown"):
             current_selected = self._collection_dropdown.get_selected()
