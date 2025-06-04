@@ -246,6 +246,42 @@ class MusicWindow(PickerWindow):
         )
         picker.present()
 
+    def __getattr__(self, name: str):
+        """Handle dynamic remove from collection actions"""
+        if name.startswith("on_remove_from_collection_"):
+            # Extract sanitized collection name from action name
+            sanitized_name = name[26:]  # Remove "on_remove_from_collection_"
+
+            # Find the actual collection name by matching the sanitized name
+            actual_collection_name = None
+            for collection_name in self._collections.keys():
+                if ''.join(c if c.isalnum() else '_' for c in collection_name) == sanitized_name:
+                    actual_collection_name = collection_name
+                    break
+
+            if not actual_collection_name:
+                raise AttributeError(f"No collection found for sanitized name '{sanitized_name}'")
+
+            def remove_from_collection_action(action: Gio.SimpleAction, param: Optional[GLib.Variant]) -> None:
+                selected_item = self.get_selected_item()
+                if not selected_item or not selected_item.path:
+                    return
+
+                # Remove from the specified collection
+                if actual_collection_name in self._collections:
+                    collection = self._collections[actual_collection_name]
+                    collection.remove(selected_item.path)
+                    self._refresh_collection_dropdown()
+
+                    # Refresh the view if we're currently filtering by this collection
+                    current_query = self.get_search_text().strip()
+                    self.on_search_changed(current_query)
+
+            return remove_from_collection_action
+
+        # Fallback to default behavior for other attributes
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
     def get_empty_icon(self) -> str:
         return "multimedia-player-symbolic"
 
