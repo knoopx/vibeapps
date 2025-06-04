@@ -181,8 +181,12 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 - OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
 - Passwords app (libsecret)
 - Diffusers app
+- Notes
+  - bug: editor mode is gone when switching apps
 - Music
+  - sidebar + play queue?
   - Collections (list of albums, one per file)
+  - rateyourmusic/discogs
 - Events app
   - uses evolution-data-server
   - Search also parses time and appies filters

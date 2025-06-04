@@ -6,6 +6,7 @@ from typing import Set
 class CollectionManager:
     def __init__(self, file) -> None:
         self.file = file
+        self.name = file.stem
         self._releases: Set[str] = set()
         self.load()
 

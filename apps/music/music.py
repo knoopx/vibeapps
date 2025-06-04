@@ -9,17 +9,19 @@ gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gdk", "4.0")
-
-from gi.repository import Gtk, Adw, GLib, Gio, Pango, Gdk
+from gi.repository import Gtk, Adw, GLib, Gio, Gdk
 from picker_window import PickerWindow
 from star_button import StarButton
 from circular_progress import CircularProgress
-from scanning import MusicScanner, ScanningCoordinator
+from music_scanner import MusicScanner
+from scanning_coordinator import ScanningCoordinator
 from collection_manager import CollectionManager
+from collections_manager import CollectionsManager
 from filtering import MusicFilter, OperationsCoordinator
 from serialization import APP_ID, ReleaseItem
-from release_list_item_widget import ReleaseListItemWidget
-from context_menu_widget import ReleaseContextMenuWidget
+from release_list_item import ReleaseListItem
+from release_context_menu import ReleaseContextMenu
+from collection_picker_window import CollectionPickerWindow
 
 
 class MusicWindow(PickerWindow):
@@ -27,24 +29,24 @@ class MusicWindow(PickerWindow):
     def __init__(self, **kwargs) -> None:
         self._all_releases = []
         self._music_dir = Path.home() / "Music"
+        self._selected_collection = ""
         self._starred = CollectionManager(
             Path.home() / ".config" / APP_ID / "starred.json"
         )
-        self._scanner = MusicScanner(self._music_dir, self._starred.contains)
+        self._collections = CollectionsManager(
+            Path.home() / ".config" / APP_ID / "collections"
+        )
+        self._scanner = MusicScanner(self._music_dir)
         self._settings = Gio.Settings.new("net.knoopx.music")
         self._progress_widget = CircularProgress()
         self._progress_widget.set_visible(False)
-        self._scanning_coordinator = ScanningCoordinator(
-            self, self._scanner, self._update_progress
-        )
+        self._scanning_coordinator = ScanningCoordinator(self)
         self._filter = MusicFilter(self)
         self._operations_coordinator = OperationsCoordinator(
             self, self._filter, self._scanning_coordinator
         )
-        self._context_menu_widget = ReleaseContextMenuWidget(self)
-
+        self._context_menu_widget = ReleaseContextMenu(self)
         super().__init__(title="Music", search_placeholder="Search music...", **kwargs)
-
         self._context_menu_widget.setup_actions()
         self._setup_keyboard_shortcuts()
         self._setup_css()
@@ -79,7 +81,20 @@ class MusicWindow(PickerWindow):
 
     def _setup_css(self) -> None:
         css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(StarButton.get_css_style().encode())
+        css_content = (
+            StarButton.get_css_style()
+            + """
+        .badge {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin: 0px 2px;
+        }
+        """
+        )
+        css_provider.load_from_data(css_content.encode())
         Gtk.StyleContext.add_provider_for_display(
             self.get_display(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
@@ -133,21 +148,25 @@ class MusicWindow(PickerWindow):
                     pass
 
     def setup_list_item(self, list_item: Gtk.ListItem) -> None:
+
         def _on_star_item(star_button, starred):
             item = list_item.get_item()
             if item:
                 self.set_starred(item, starred)
 
-        widget = ReleaseListItemWidget(on_star_toggled=_on_star_item)
+        widget = ReleaseListItem(on_star_toggled=_on_star_item)
         list_item.set_child(widget)
 
     def bind_list_item(self, list_item: Gtk.ListItem, item: ReleaseItem) -> None:
         if not item:
             return
-
         widget = list_item.get_child()
-        assert isinstance(widget, ReleaseListItemWidget)
-        widget.bind_to_item(item)
+        assert isinstance(widget, ReleaseListItem)
+
+        # Get collections that contain this release
+        collections = self._collections.lookup(item.path)
+
+        widget.bind_to_item(item, [c.name for c in collections])
 
     def get_context_menu_actions(self) -> Dict[str, str]:
         return self._context_menu_widget.get_context_menu_actions()
@@ -222,6 +241,43 @@ class MusicWindow(PickerWindow):
                 error_dialog.set_default_response("ok")
                 error_dialog.present()
 
+    def on_add_to_collection_action(
+        self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
+    ) -> None:
+        selected_item = self.get_selected_item()
+        if not selected_item or not selected_item.path:
+            return
+
+        def on_collection_selected(collection_name: str):
+            try:
+                collection = self._collections[collection_name]
+                collection.add(selected_item.path)
+                self._refresh_collection_dropdown()
+                dialog = Adw.MessageDialog.new(
+                    self,
+                    "Added to Collection",
+                    f"'{selected_item.title}' has been added to '{collection_name}'",
+                )
+                dialog.add_response("ok", "OK")
+                dialog.set_default_response("ok")
+                dialog.present()
+            except Exception as e:
+                error_dialog = Adw.MessageDialog.new(
+                    self,
+                    "Error Adding to Collection",
+                    f"Could not add '{selected_item.title}' to collection:\n{str(e)}",
+                )
+                error_dialog.add_response("ok", "OK")
+                error_dialog.set_default_response("ok")
+                error_dialog.present()
+
+        picker = CollectionPickerWindow(
+            parent_window=self,
+            collections_manager=self._collections,
+            on_collection_selected=on_collection_selected,
+        )
+        picker.present()
+
     def get_empty_icon(self) -> str:
         return "multimedia-player-symbolic"
 
@@ -241,11 +297,35 @@ class MusicWindow(PickerWindow):
         self._star_filter_button.connect("star-toggled", self._on_star_filter_toggled)
         return [self._star_filter_button]
 
+    def get_header_bar_title_widget(self) -> Optional[Gtk.Widget]:
+        self._collection_dropdown = Gtk.DropDown()
+        self._refresh_collection_dropdown()
+        self._collection_dropdown.set_tooltip_text("Filter by collection")
+        self._collection_dropdown.connect(
+            "notify::selected", self._on_collection_selected
+        )
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.append(self._search_entry)
+        box.append(self._collection_dropdown)
+        return box
+
     def get_header_bar_right_widgets(self) -> List[Gtk.Widget]:
         return [self._progress_widget]
 
     def _on_star_filter_toggled(self, star_button: StarButton, starred: bool) -> None:
         self._filter.on_star_filter_toggled(starred)
+
+    def _on_collection_selected(self, dropdown: Gtk.DropDown, param) -> None:
+        selected_index = dropdown.get_selected()
+        if selected_index == 0:
+            collection_name = ""
+        else:
+            collection_names = sorted(self._collections.keys())
+            if selected_index - 1 < len(collection_names):
+                collection_name = collection_names[selected_index - 1]
+            else:
+                collection_name = ""
+        self._filter.on_collection_filter_changed(collection_name)
 
     def _show_progress(self) -> None:
         self._progress_widget.set_visible(True)
@@ -300,6 +380,56 @@ class MusicWindow(PickerWindow):
                 self.toggle_starred(selected_item)
                 return True
         return False
+
+    def _refresh_collection_dropdown(self) -> None:
+        if hasattr(self, "_collection_dropdown"):
+            current_selected = self._collection_dropdown.get_selected()
+            current_collection = ""
+            if current_selected > 0:
+                collection_names = sorted(self._collections.keys())
+                if current_selected - 1 < len(collection_names):
+                    current_collection = collection_names[current_selected - 1]
+            collection_names = sorted(self._collections.keys())
+            string_list = Gtk.StringList()
+            string_list.append("Everything")
+            for name in collection_names:
+                string_list.append(name)
+            self._collection_dropdown.set_model(string_list)
+            if current_collection and current_collection in collection_names:
+                new_index = collection_names.index(current_collection) + 1
+                self._collection_dropdown.set_selected(new_index)
+            else:
+                self._collection_dropdown.set_selected(0)
+
+    def get_global_context_menu_actions(self) -> dict:
+        return {
+            "scan_library": "on_scan_library_action",
+            "open_music_folder": "on_open_music_folder_action",
+        }
+
+    def get_global_context_menu_model(self) -> Optional[Gio.Menu]:
+        menu_model = Gio.Menu.new()
+        menu_model.append("Scan Library", "global.scan_library")
+        menu_model.append("Open Music Folder", "global.open_music_folder")
+        return menu_model
+
+    def on_scan_library_action(
+        self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
+    ) -> None:
+        self._scanning_coordinator.start_scanning()
+
+    def on_open_music_folder_action(
+        self, action: Gio.SimpleAction, param: Optional[GLib.Variant]
+    ) -> None:
+        launcher = Gio.SubprocessLauncher.new(
+            Gio.SubprocessFlags.SEARCH_PATH_FROM_ENVP
+            | Gio.SubprocessFlags.STDERR_PIPE
+            | Gio.SubprocessFlags.STDOUT_PIPE
+        )
+        try:
+            launcher.spawnv(["xdg-open", str(self._music_dir)])
+        except GLib.Error:
+            pass
 
 
 class MusicApplication(Adw.Application):

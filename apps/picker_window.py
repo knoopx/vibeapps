@@ -26,16 +26,16 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         search_placeholder: str = "Search...",
         window_size: tuple = (500, 900),
         search_delay_ms: int = 300,
-        enable_context_menu: bool = True,
-        context_menu_shortcut: str = "<Control>j",
+        context_menu_shortcut: Optional[str] = "<Control>j",
+        global_context_menu_shortcut: Optional[str] = "<Control><Shift>j",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._title = title
         self._search_placeholder = search_placeholder
         self._search_delay_ms = search_delay_ms
-        self._enable_context_menu = enable_context_menu
         self._context_menu_shortcut = context_menu_shortcut
+        self._global_context_menu_shortcut = global_context_menu_shortcut
         self._item_store = Gio.ListStore.new(self.get_item_type())
         self._selection_model = Gtk.SingleSelection(model=self._item_store)
         self._search_delay_id = 0
@@ -44,8 +44,10 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self.set_title(title)
         self._setup_ui()
         self._setup_signals()
-        if self._enable_context_menu:
+        if self._context_menu_shortcut is not None:
             self._setup_context_menu_actions()
+        if self._global_context_menu_shortcut is not None:
+            self._setup_global_context_menu_actions()
         self.load_initial_data()
 
     # ============================================================================
@@ -130,7 +132,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         search_key_controller = Gtk.EventControllerKey()
         search_key_controller.connect("key-pressed", self._on_search_key_pressed)
         self._search_entry.add_controller(search_key_controller)
-        if self._enable_context_menu:
+        if self._context_menu_shortcut is not None:
             search_shortcut_controller = Gtk.ShortcutController.new()
             search_shortcut_controller.set_scope(Gtk.ShortcutScope.MANAGED)
             context_menu_shortcut = Gtk.Shortcut.new(
@@ -139,6 +141,15 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             )
             search_shortcut_controller.add_shortcut(context_menu_shortcut)
             self._search_entry.add_controller(search_shortcut_controller)
+        if self._global_context_menu_shortcut is not None:
+            global_shortcut_controller = Gtk.ShortcutController.new()
+            global_shortcut_controller.set_scope(Gtk.ShortcutScope.MANAGED)
+            global_context_menu_shortcut = Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string(self._global_context_menu_shortcut),
+                Gtk.CallbackAction.new(self._show_global_context_menu_action_callback),
+            )
+            global_shortcut_controller.add_shortcut(global_context_menu_shortcut)
+            self.add_controller(global_shortcut_controller)
         window_key_controller = Gtk.EventControllerKey()
         window_key_controller.connect("key-pressed", self._on_window_key_pressed)
         self.add_controller(window_key_controller)
@@ -208,7 +219,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     def _setup_context_menu_gesture(
         self, widget: Gtk.Widget, item: Any, list_item: Optional[Gtk.ListItem] = None
     ) -> None:
-        if not self._enable_context_menu:
+        if self._context_menu_shortcut is None:
             return
         context_menu_gesture = Gtk.GestureClick.new()
         context_menu_gesture.set_button(Gdk.BUTTON_SECONDARY)
@@ -216,6 +227,63 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
             "pressed", self._on_item_right_click, item, list_item
         )
         widget.add_controller(context_menu_gesture)
+
+    def _setup_global_context_menu_actions(self) -> None:
+        self._global_context_action_group = Gio.SimpleActionGroup()
+        for action_name, method_name in self.get_global_context_menu_actions().items():
+            action = Gio.SimpleAction.new(action_name, None)
+            if hasattr(self, method_name):
+                action.connect("activate", getattr(self, method_name))
+                self._global_context_action_group.add_action(action)
+        self.insert_action_group("global", self._global_context_action_group)
+
+    def _show_global_context_menu_action_callback(
+        self, widget: Gtk.Widget, args: Any
+    ) -> bool:
+        self.show_global_context_menu()
+        return True
+
+    def show_global_context_menu(
+        self, anchor_widget: Optional[Gtk.Widget] = None
+    ) -> None:
+        menu_model = self.get_global_context_menu_model()
+        if not menu_model:
+            return
+        from context_menu_window import ContextMenuWindow, ContextMenuAction
+
+        actions = []
+        for i in range(menu_model.get_n_items()):
+            label = menu_model.get_item_attribute_value(i, "label", None)
+            action = menu_model.get_item_attribute_value(i, "action", None)
+            if label and action:
+                label_str = label.get_string()
+                action_str = action.get_string()
+                if not label_str.strip():
+                    continue
+
+                def make_callback(action_name: str) -> Callable[[], None]:
+
+                    def callback() -> None:
+                        action_name_clean = action_name.replace("global.", "")
+                        if hasattr(
+                            self, "_global_context_action_group"
+                        ) and self._global_context_action_group.has_action(
+                            action_name_clean
+                        ):
+                            self._global_context_action_group.activate_action(
+                                action_name_clean, None
+                            )
+
+                    return callback
+
+                action_obj = ContextMenuAction(
+                    label_str, action_str, make_callback(action_str)
+                )
+                actions.append(action_obj)
+        if not actions:
+            return
+        context_menu = ContextMenuWindow(self, actions)
+        context_menu.present()
 
     # ============================================================================
     # EVENT HANDLERS
@@ -462,6 +530,14 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
     @abstractmethod
     def get_context_menu_model(self, item: Any) -> Optional[Gio.Menu]:
         pass
+
+    def get_global_context_menu_actions(self) -> dict:
+        """Return global context menu actions. Override to provide global actions."""
+        return {}
+
+    def get_global_context_menu_model(self) -> Optional[Gio.Menu]:
+        """Return global context menu model. Override to provide global menu."""
+        return None
 
     # ============================================================================
     # VIRTUAL/HOOK METHODS (CAN BE OVERRIDDEN BY SUBCLASSES)

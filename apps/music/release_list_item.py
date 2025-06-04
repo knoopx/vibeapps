@@ -1,10 +1,10 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, List
 from gi.repository import Gtk, Pango
 from star_button import StarButton
 from serialization import ReleaseItem
 
 
-class ReleaseListItemWidget(Gtk.Box):
+class ReleaseListItem(Gtk.Box):
 
     def __init__(self, on_star_toggled: Optional[Callable] = None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
@@ -35,6 +35,11 @@ class ReleaseListItemWidget(Gtk.Box):
         )
         self._title_label.add_css_class("heading")
         self._info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        # Collections box for badges - positioned before track count
+        self._collections_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self._info_box.append(self._collections_box)
+
         self._track_count_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         self._track_count_label.add_css_class("dim-label")
         self._track_count_label.add_css_class("caption")
@@ -43,11 +48,31 @@ class ReleaseListItemWidget(Gtk.Box):
         self._content_box.append(self._info_box)
         self.append(self._content_box)
 
+    def _create_collection_badge(self, collection_name: str) -> Gtk.Label:
+        """Create a styled badge for a collection name."""
+        badge = Gtk.Label(label=collection_name)
+        badge.add_css_class("dim-label")
+        badge.add_css_class("caption")
+        badge.add_css_class("badge")  # Add a custom badge class for styling
+        badge.set_margin_start(2)
+        badge.set_margin_end(2)
+        badge.set_margin_top(1)
+        badge.set_margin_bottom(1)
+        return badge
+
+    def _clear_collection_badges(self):
+        """Remove all existing collection badges."""
+        child = self._collections_box.get_first_child()
+        while child:
+            next_child = child.get_next_sibling()
+            self._collections_box.remove(child)
+            child = next_child
+
     def _handle_star_toggled(self, star_button, starred):
         if self._on_star_toggled:
             self._on_star_toggled(star_button, starred)
 
-    def bind_to_item(self, item: ReleaseItem):
+    def bind_to_item(self, item: ReleaseItem, collections: Optional[List[str]] = None):
         # Disconnect from previous item if any
         if self._current_item and self._item_starred_connection_id:
             self._current_item.disconnect(self._item_starred_connection_id)
@@ -61,6 +86,17 @@ class ReleaseListItemWidget(Gtk.Box):
 
         self._title_label.set_text(item.title)
         self._star_button.set_starred(item.starred)
+
+        # Update collections display with badges
+        self._clear_collection_badges()
+        if collections:
+            for collection in sorted(collections):
+                badge = self._create_collection_badge(collection)
+                self._collections_box.append(badge)
+            self._collections_box.set_visible(True)
+        else:
+            self._collections_box.set_visible(False)
+
         track_text = (
             f"{item.track_count} tracks" if item.track_count != 1 else "1 track"
         )

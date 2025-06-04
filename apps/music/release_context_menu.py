@@ -3,7 +3,7 @@ from gi.repository import Gtk, Gio
 from serialization import ReleaseItem
 
 
-class ReleaseContextMenuWidget(Gtk.Widget):
+class ReleaseContextMenu(Gtk.Widget):
 
     def __init__(self, parent_window):
         super().__init__()
@@ -24,12 +24,14 @@ class ReleaseContextMenuWidget(Gtk.Widget):
         return {
             "reveal": "on_reveal_action",
             "trash_release": "on_trash_release_action",
+            "add_to_collection": "on_add_to_collection_action",
         }
 
     def get_context_menu_model(self, item: Optional[ReleaseItem]) -> Optional[Gio.Menu]:
         if not item:
             return None
         menu_model = Gio.Menu.new()
+        menu_model.append("Add to Collection", "context.add_to_collection")
         menu_model.append("Reveal in Files", "context.reveal")
         menu_model.append("Move to Trash", "context.trash_release")
         return menu_model

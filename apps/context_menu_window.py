@@ -1,31 +1,41 @@
-#!/usr/bin/env python3
 import gi
-gi.require_version('Gtk', '4.0')
-gi.require_version('Adw', '1')
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, GObject, Gio
 from picker_window import PickerWindow, PickerItem
 from typing import Callable, List
 
-class ContextMenuAction(PickerItem):
-    __gtype_name__ = 'ContextMenuAction'
-    label = GObject.Property(type=str, default='')
-    action_name = GObject.Property(type=str, default='')
 
-    def __init__(self, label: str, action_name: str, callback: Callable=None):
+class ContextMenuAction(PickerItem):
+    __gtype_name__ = "ContextMenuAction"
+    label = GObject.Property(type=str, default="")
+    action_name = GObject.Property(type=str, default="")
+
+    def __init__(self, label: str, action_name: str, callback: Callable = None):
         super().__init__()
         self.label = label
         self.action_name = action_name
         self.callback = callback
 
+
 class ContextMenuWindow(PickerWindow):
 
-    def __init__(self, parent_window: Gtk.Window, actions: List[ContextMenuAction], **kwargs):
+    def __init__(
+        self, parent_window: Gtk.Window, actions: List[ContextMenuAction], **kwargs
+    ):
         self._actions = actions
-        super().__init__(title='Actions', search_placeholder='Search actions...', enable_context_menu=False, window_size=(300, 400), **kwargs)
+        super().__init__(
+            title="Actions",
+            search_placeholder="Search actions...",
+            context_menu_shortcut=None,
+            window_size=(300, 400),
+            **kwargs
+        )
         self.set_transient_for(parent_window)
         self.set_modal(True)
         self.set_resizable(False)
-        self.add_css_class('context-menu-window')
+        self.add_css_class("context-menu-window")
         GLib.idle_add(self._load_actions_immediately)
 
     def get_item_type(self):
@@ -38,14 +48,22 @@ class ContextMenuWindow(PickerWindow):
         self._item_store.remove_all()
         query_lower = query.lower()
         for action in self._actions:
-            if not query or query_lower in action.label.lower() or query_lower in action.action_name.lower():
+            if (
+                not query
+                or query_lower in action.label.lower()
+                or query_lower in action.action_name.lower()
+            ):
                 if action.label.strip():
                     self._item_store.append(action)
         if self._item_store.get_n_items() > 0:
             self._selection_model.set_selected(0)
 
     def on_item_activated(self, item):
-        if isinstance(item, ContextMenuAction) and hasattr(item, 'callback') and item.callback:
+        if (
+            isinstance(item, ContextMenuAction)
+            and hasattr(item, "callback")
+            and item.callback
+        ):
             self.close()
             GLib.idle_add(item.callback)
 
@@ -75,8 +93,8 @@ class ContextMenuWindow(PickerWindow):
                 self._item_store.append(action)
         if self._item_store.get_n_items() > 0:
             self._selection_model.set_selected(0)
-        self._content_stack.set_visible_child_name('results')
-        self._search_entry.set_text('')
-        if hasattr(self, '_list_view'):
+        self._content_stack.set_visible_child_name("results")
+        self._search_entry.set_text("")
+        if hasattr(self, "_list_view"):
             self._list_view.grab_focus()
         return False
