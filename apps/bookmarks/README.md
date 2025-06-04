@@ -36,9 +36,19 @@ The application uses the `foxmarks` tool to read Firefox bookmarks from your bro
 ## Profile Detection
 
 The application tries to find your Firefox profile in this order:
+
 1. `~/.mozilla/firefox/knoopx`
 2. `~/.mozilla/firefox/default`
 3. `~/.mozilla/firefox/default-release`
 4. Any directory containing `places.sqlite`
 
 If automatic detection fails, `foxmarks` will attempt to use its own default profile detection.
+
+# TODO
+
+- Bookmarks v2:
+  - uses its own sqlite database to store bookmarks instead of firefox
+  - built-in bookmarking (just paste link in search entry)
+    - scrapes websites and summarizes it using openai
+    - screenshots it (using firefox)
+    - shows notification after scraping
