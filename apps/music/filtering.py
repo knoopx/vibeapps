@@ -42,13 +42,9 @@ class MusicFilter:
             self._handle_empty_query(star_filter_active, collection_filter)
             return
         query_lower = query.lower()
-        if len(self.window._all_releases) < 100:
-            filtered_releases = self._filter_small_collection(
-                query_lower, star_filter_active, collection_filter
-            )
-            self._apply_search_results(filtered_releases, query)
-        else:
-            self._start_batched_filtering(query_lower, query, star_filter_active, collection_filter)
+        self._start_batched_filtering(
+            query_lower, query, star_filter_active, collection_filter
+        )
 
     def _cancel_pending_operations(self) -> None:
         if self._filter_idle_id > 0:
@@ -65,21 +61,29 @@ class MusicFilter:
 
     def _get_collection_filter_state(self) -> str:
         return (
-            getattr(self.window, "_selected_collection", "") if hasattr(self.window, "_selected_collection") else ""
+            getattr(self.window, "_selected_collection", "")
+            if hasattr(self.window, "_selected_collection")
+            else ""
         )
 
-    def _handle_empty_query(self, star_filter_active: bool, collection_filter: str) -> None:
+    def _handle_empty_query(
+        self, star_filter_active: bool, collection_filter: str
+    ) -> None:
         releases_to_show = self.window._all_releases
         if star_filter_active:
             releases_to_show = [r for r in releases_to_show if r.starred]
         if collection_filter:
             collection = self.window._collections.get(collection_filter)
             if collection:
-                releases_to_show = [r for r in releases_to_show if collection.contains(r.path)]
+                releases_to_show = [
+                    r for r in releases_to_show if collection.contains(r.path)
+                ]
         if len(releases_to_show) > 100:
             self._start_batched_result_addition(releases_to_show)
         else:
-            self._add_releases_immediately(releases_to_show, star_filter_active, collection_filter)
+            self._add_releases_immediately(
+                releases_to_show, star_filter_active, collection_filter
+            )
 
     def _add_releases_immediately(
         self, releases: List[Any], star_filter_active: bool, collection_filter: str = ""
@@ -104,27 +108,12 @@ class MusicFilter:
                 description=f"No audio files found in {self.window._music_dir}",
             )
 
-    def _filter_small_collection(
-        self, query_lower: str, star_filter_active: bool, collection_filter: str = ""
-    ) -> List[Any]:
-        filtered = []
-        collection = None
-        if collection_filter:
-            collection = self.window._collections.get(collection_filter)
-
-        for release in self.window._all_releases:
-            if query_lower not in release.title.lower():
-                continue
-            if star_filter_active and not release.starred:
-                continue
-            if collection_filter and collection and not collection.contains(release.path):
-                continue
-            filtered.append(release)
-
-        return filtered
-
     def _start_batched_filtering(
-        self, query_lower: str, original_query: str, star_filter_active: bool = False, collection_filter: str = ""
+        self,
+        query_lower: str,
+        original_query: str,
+        star_filter_active: bool = False,
+        collection_filter: str = "",
     ) -> None:
         self._current_filter_state = FilterState(
             query_lower=query_lower,
@@ -158,7 +147,11 @@ class MusicFilter:
                 continue
             if state.star_filter_active and not release.starred:
                 continue
-            if state.collection_filter_active and collection and not collection.contains(release.path):
+            if (
+                state.collection_filter_active
+                and collection
+                and not collection.contains(release.path)
+            ):
                 continue
             state.filtered_releases.append(release)
         state.current_index = end_index
@@ -233,7 +226,9 @@ class MusicFilter:
             if collection_filter:
                 collection = self.window._collections.get(collection_filter)
                 if collection:
-                    releases_to_show = [r for r in releases_to_show if collection.contains(r.path)]
+                    releases_to_show = [
+                        r for r in releases_to_show if collection.contains(r.path)
+                    ]
             if len(releases_to_show) > 100:
                 self._start_batched_result_addition(releases_to_show)
             else:
@@ -243,15 +238,9 @@ class MusicFilter:
                     self.window._show_results()
         else:
             query_lower = current_query.lower()
-            if len(self.window._all_releases) < 100:
-                filtered_releases = self._filter_small_collection(
-                    query_lower, star_filter_active, collection_filter
-                )
-                self._apply_search_results(filtered_releases, current_query)
-            else:
-                self._start_batched_filtering(
-                    query_lower, current_query, star_filter_active, collection_filter
-                )
+            self._start_batched_filtering(
+                query_lower, current_query, star_filter_active, collection_filter
+            )
 
     def clear_all_operations(self) -> None:
         self._cancel_pending_operations()
