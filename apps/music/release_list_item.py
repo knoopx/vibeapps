@@ -6,7 +6,6 @@ from badge import Badge
 
 
 class ReleaseListItem(Gtk.Box):
-
     def __init__(self, on_star_toggled: Optional[Callable] = None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
         self._on_star_toggled = on_star_toggled
@@ -71,6 +70,7 @@ class ReleaseListItem(Gtk.Box):
             "notify::starred", self._on_item_starred_changed
         )
         self._title_label.set_text(item.title)
+        self._title_label.set_tooltip_text(item.title)
         self._star_button.set_starred(item.starred)
         self._clear_collection_badges()
         if collections:
