@@ -78,35 +78,34 @@ class MusicFilter:
                 releases_to_show = [
                     r for r in releases_to_show if collection.contains(r.path)
                 ]
-        if len(releases_to_show) > 100:
-            self._start_batched_result_addition(releases_to_show)
-        else:
-            self._add_releases_immediately(
-                releases_to_show, star_filter_active, collection_filter
-            )
+        self._start_batched_result_addition_with_empty_check(
+            releases_to_show, star_filter_active, collection_filter
+        )
 
-    def _add_releases_immediately(
-        self, releases: List[Any], star_filter_active: bool, collection_filter: str = ""
+    def _start_batched_result_addition_with_empty_check(
+        self,
+        releases: List[Any],
+        star_filter_active: bool = False,
+        collection_filter: str = "",
     ) -> None:
-        for release in releases:
-            self.window.add_item(release)
-        if releases:
-            self.window._show_results()
-        elif collection_filter:
-            self.window._show_empty(
-                title=f"No Music in '{collection_filter}'",
-                description="This collection is empty or no releases match your criteria.",
-            )
-        elif star_filter_active:
-            self.window._show_empty(
-                title="No Starred Music Found",
-                description="No starred releases match your criteria.",
-            )
+        if not releases:
+            if collection_filter:
+                self.window._show_empty(
+                    title=f"No Music in '{collection_filter}'",
+                    description="This collection is empty or no releases match your criteria.",
+                )
+            elif star_filter_active:
+                self.window._show_empty(
+                    title="No Starred Music Found",
+                    description="No starred releases match your criteria.",
+                )
+            else:
+                self.window._show_empty(
+                    title="No Music Found",
+                    description=f"No audio files found in {self.window._music_dir}",
+                )
         else:
-            self.window._show_empty(
-                title="No Music Found",
-                description=f"No audio files found in {self.window._music_dir}",
-            )
+            self._start_batched_result_addition(releases)
 
     def _start_batched_filtering(
         self,
@@ -179,12 +178,7 @@ class MusicFilter:
                     description=f"No audio files found in {self.window._music_dir}",
                 )
             return
-        if len(filtered_releases) > 100:
-            self._start_batched_result_addition(filtered_releases)
-        else:
-            for release in filtered_releases:
-                self.window.add_item(release)
-            self.window._show_results()
+        self._start_batched_result_addition(filtered_releases)
 
     def _start_batched_result_addition(self, filtered_releases: List[Any]) -> None:
         self._current_result_state = ResultState(
@@ -229,13 +223,7 @@ class MusicFilter:
                     releases_to_show = [
                         r for r in releases_to_show if collection.contains(r.path)
                     ]
-            if len(releases_to_show) > 100:
-                self._start_batched_result_addition(releases_to_show)
-            else:
-                for release in releases_to_show:
-                    self.window.add_item(release)
-                if releases_to_show:
-                    self.window._show_results()
+            self._start_batched_result_addition_with_empty_check(releases_to_show)
         else:
             query_lower = current_query.lower()
             self._start_batched_filtering(
@@ -261,7 +249,6 @@ class MusicFilter:
 
 
 class OperationsCoordinator:
-
     def __init__(self, window, filter_manager, scanning_coordinator) -> None:
         self.window = window
         self.filter_manager = filter_manager
