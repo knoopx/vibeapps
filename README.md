@@ -177,7 +177,7 @@ Complete example configuration:
 After rebuilding your home-manager configuration, all enabled programs will be available in your PATH.
 
 # Future Work
-
+-
 - OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
 - Passwords app (libsecret)
 - Diffusers app
