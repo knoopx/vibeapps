@@ -2,30 +2,20 @@
   pkgs,
   lib,
   ...
-}: let
-  deps = pkgs.stdenvNoCC.mkDerivation {
-    name = "md2html-deps";
-    dontUnpack = true;
-    outputHashAlgo = "sha256";
-    outputHashMode = "recursive";
-    outputHash = "sha256-VrMoI+3lN+6KxHC5JdWpx45zCbqUowJYk+vwI4JD/S0=";
+}:
+pkgs.stdenvNoCC.mkDerivation {
+  name = "md2html";
+  outputHashAlgo = "sha256";
+  outputHashMode = "recursive";
+  outputHash = "sha256-Q02ANM9LZ6hIODq4/x4sAw4yQwOs5X1V3hFhnoilNEo=";
+  src = ./.;
 
-    buildPhase = ''
-      ${lib.getExe pkgs.bun} add rehype-autolink-headings rehype-document rehype-format rehype-highlight rehype-raw rehype-slug rehype-stringify remark-definition-list remark-frontmatter remark-gfm remark-mdx remark-oembed remark-parse remark-rehype remark-wiki-link unified
-      mv node_modules $out
-    '';
-  };
-in
-  pkgs.stdenvNoCC.mkDerivation {
-    name = "md2html";
-    dontUnpack = true;
-    src = ./.;
-    buildPhase = ''
-      mkdir -p $out/{bin,share/md2html}
-      cp -r $src/* $out/share/md2html
-      cp -r ${deps} $out/share/md2html/node_modules
-      chmod +x $out/share/md2html/md2html.js
-      ln -s $out/share/md2html/md2html.js $out/bin/md2html
-      substituteInPlace $out/bin/md2html --replace-fail "@@CSS@@" "${./md2html.css}"
-    '';
-  }
+  buildPhase = ''
+    mkdir -p $out/{bin,share/md2html}
+    substituteInPlace md2html.js --replace-fail "@@CSS@@" "md2html.css"
+    ${lib.getExe pkgs.bun} install
+    ${lib.getExe pkgs.bun} build md2html.js --outdir $out/share/md2html --target node --sourcemap --minify
+    chmod +x $out/share/md2html/md2html.js
+    ln -s $out/share/md2html/md2html.js $out/bin/md2html
+  '';
+}
