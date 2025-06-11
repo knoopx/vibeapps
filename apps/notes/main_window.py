@@ -229,7 +229,7 @@ class MainWindow(Adw.ApplicationWindow):
                 print(f'Could not select existing note: {relative_path}')
         else:
             title_for_content = os.path.splitext(os.path.basename(relative_path))[0]
-            initial_content = f'# {title_for_content}\\n\\n'
+            initial_content = f"# {title_for_content}\n\n"
             new_note = self.repository.create_note(relative_path, initial_content)
             if new_note:
                 self.current_note = new_note
