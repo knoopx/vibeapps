@@ -40,8 +40,7 @@
 
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "mdx-editor";
-    src = ./mdx-editor.py;
-    dontUnpack = true;
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -63,9 +62,11 @@
     '';
 
     buildPhase = ''
-      install -m 755 -D $src $out/bin/mdx-editor
+      mkdir -p $out/bin $out/share/pixmaps
+      install -m 755 -D mdx-editor.py $out/bin/mdx-editor
       cp -r ${assets}/* $out/bin/
       substituteInPlace $out/bin/index.html --replace-fail "/assets/" "./assets/"
+      cp icon.png $out/share/pixmaps/org.example.mdxeditor.png
     '';
 
     meta.mainProgram = "mdx-editor";
@@ -79,7 +80,7 @@ in
         name = "mdx-editor";
         desktopName = "Notes";
         exec = lib.getExe pkg;
-        icon = "document-new-symbolic";
+        icon = "${pkg}/share/pixmaps/org.example.mdxeditor.png";
       })
     ];
   }

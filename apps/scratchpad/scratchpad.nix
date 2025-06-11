@@ -5,8 +5,7 @@
 }: let
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "scratchpad";
-    src = ./scratchpad.py;
-    dontUnpack = true;
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -26,7 +25,9 @@
     '';
 
     buildPhase = ''
-      install -m 755 -D $src $out/bin/scratchpad
+      mkdir -p $out/bin $out/share/pixmaps
+      install -m 755 -D scratchpad.py $out/bin/scratchpad
+      cp icon.png $out/share/pixmaps/net.knoopx.scratchpad.png
     '';
 
     meta = {
@@ -43,7 +44,7 @@ in
         name = "scratchpad";
         desktopName = "Scratchpad";
         exec = lib.getExe pkg;
-        icon = "accessories-calculator-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.scratchpad.png";
       })
     ];
   }

@@ -7,8 +7,7 @@
 
   pkg = pkgs.python3Packages.buildPythonApplication {
     name = "chat";
-    src = ./chat.py;
-    dontUnpack = true;
+    src = ./.;
     pyproject = false;
 
     nativeBuildInputs = with pkgs; [
@@ -31,7 +30,9 @@
     '';
 
     buildPhase = ''
-      install -m 755 -D $src $out/bin/chat
+      mkdir -p $out/bin $out/share/pixmaps
+      install -m 755 -D chat.py $out/bin/chat
+      cp icon.png $out/share/pixmaps/net.knoopx.chat.png
     '';
 
     meta.mainProgram = "chat";
@@ -45,7 +46,7 @@ in
         name = "chat";
         desktopName = "Chat";
         exec = lib.getExe pkg;
-        icon = "chat-message-new-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.chat.png";
       })
     ];
   }

@@ -18,10 +18,11 @@
     ];
 
     buildPhase = ''
-      mkdir -p $out/bin $out/lib/python
+      mkdir -p $out/bin $out/lib/python $out/share/pixmaps
       cp nix-packages.py $out/bin/nix-packages
       cp ${../picker_window.py} $out/lib/python/picker_window.py
       cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
+      cp $src/icon.png $out/share/pixmaps/net.knoopx.nix-packages.png
       chmod +x $out/bin/nix-packages
     '';
 
@@ -45,7 +46,7 @@ in
         name = "nix-packages";
         desktopName = "Nix Packages";
         exec = lib.getExe pkg;
-        icon = "package-x-generic-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.nix-packages.png";
       })
     ];
   }

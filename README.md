@@ -186,3 +186,8 @@ After rebuilding your home-manager configuration, all enabled programs will be a
   - Search also parses time and appies filters
   - Uses dateparser to parse natural language
   - Shows calendar when creating new event
+
+
+# Credits
+
+* Icons from https://www.thiings.co/things

@@ -34,7 +34,7 @@
     installPhase = ''
       runHook preInstall
 
-      mkdir -p $out/bin $out/${pkgs.python3.sitePackages} $out/share/glib-2.0/schemas
+      mkdir -p $out/bin $out/${pkgs.python3.sitePackages} $out/share/glib-2.0/schemas $out/share/pixmaps
 
       # Install local Python modules
       cp *.py $out/${pkgs.python3.sitePackages}/
@@ -49,6 +49,9 @@
       # Install main executable
       cp music.py $out/bin/music
       chmod +x $out/bin/music
+
+      # Install icon
+      cp icon.png $out/share/pixmaps/net.knoopx.music.png
 
       # Install GSettings schema
       install -Dm644 net.knoopx.music.gschema.xml $out/share/glib-2.0/schemas/
@@ -68,7 +71,7 @@ in
         name = "music";
         desktopName = "Music";
         exec = lib.getExe pkg;
-        icon = "multimedia-player-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.music.png";
       })
     ];
   }

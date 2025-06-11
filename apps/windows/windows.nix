@@ -18,10 +18,11 @@
     ];
 
     buildPhase = ''
-      mkdir -p $out/bin $out/lib/python
+      mkdir -p $out/bin $out/lib/python $out/share/pixmaps
       cp windows.py $out/bin/windows
       cp ${../picker_window.py} $out/lib/python/picker_window.py
       cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
+      cp $src/icon.png $out/share/pixmaps/net.knoopx.windows.png
       chmod +x $out/bin/windows
     '';
 
@@ -44,7 +45,7 @@ in
         name = "windows";
         desktopName = "Windows";
         exec = lib.getExe pkg;
-        icon = "view-grid-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.windows.png";
       })
     ];
   }

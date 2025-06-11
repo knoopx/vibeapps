@@ -29,10 +29,11 @@
     ];
 
     buildPhase = ''
-      mkdir -p $out/{bin,share/notes}
+      mkdir -p $out/{bin,share/notes,share/pixmaps}
       cp -r ./* $out/share/notes/
       chmod +x $out/share/notes/notes.py
       ln -s $out/share/notes/notes.py $out/bin/notes
+      cp icon.png $out/share/pixmaps/net.knoopx.notes.png
     '';
 
     postInstall = ''
@@ -59,7 +60,7 @@ in
         name = "notes";
         desktopName = "Notes";
         exec = lib.getExe pkg;
-        icon = "document-new-symbolic";
+        icon = "${pkg}/share/pixmaps/net.knoopx.notes.png";
       })
     ];
   }
