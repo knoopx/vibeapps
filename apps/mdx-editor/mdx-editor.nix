@@ -66,7 +66,7 @@
       install -m 755 -D mdx-editor.py $out/bin/mdx-editor
       cp -r ${assets}/* $out/bin/
       substituteInPlace $out/bin/index.html --replace-fail "/assets/" "./assets/"
-      cp icon.png $out/share/pixmaps/org.example.mdxeditor.png
+      cp icon.png $out/share/pixmaps/net.knoopx.mdx-editor.png
     '';
 
     meta.mainProgram = "mdx-editor";
@@ -80,7 +80,7 @@ in
         name = "mdx-editor";
         desktopName = "Notes";
         exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/org.example.mdxeditor.png";
+        icon = "${pkg}/share/pixmaps/net.knoopx.mdx-editor.png";
       })
     ];
   }

@@ -108,7 +108,7 @@ class ImageCaptionViewer(Adw.ApplicationWindow):
 class ImageViewerApp(Adw.Application):
 
     def __init__(self, dataset_dir, caption_ext):
-        super().__init__(application_id='com.example.dataset-viewer', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        super().__init__(application_id='net.knoopx.dataset-viewer', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.dataset_dir = dataset_dir
         self.caption_ext = caption_ext
         self.window = None

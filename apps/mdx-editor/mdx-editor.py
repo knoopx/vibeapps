@@ -79,7 +79,7 @@ class MDXEditorWidget(Gtk.Box):
 class MDXEditorApp(Adw.Application):
 
     def __init__(self):
-        super().__init__(application_id='org.example.mdxeditor', flags=Gio.ApplicationFlags.FLAGS_NONE)
+        super().__init__(application_id='net.knoopx.mdx-editor', flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.connect('activate', self.on_activate)
 
     def on_activate(self, app):

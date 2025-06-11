@@ -26,7 +26,7 @@
     buildPhase = ''
       mkdir -p $out/bin $out/share/pixmaps
       install -m 755 -D dataset-viewer.py $out/bin/ds
-      cp icon.png $out/share/pixmaps/com.example.dataset-viewer.png
+      cp icon.png $out/share/pixmaps/net.knoopx.dataset-viewer.png
     '';
 
     meta.mainProgram = "ds";
@@ -40,7 +40,7 @@ in
         name = "dataset-viewer";
         desktopName = "Dataset Viewer";
         exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/com.example.dataset-viewer.png";
+        icon = "${pkg}/share/pixmaps/net.knoopx.dataset-viewer.png";
       })
     ];
   }
