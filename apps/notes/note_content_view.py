@@ -119,13 +119,17 @@ class NoteContentView(Gtk.Box):
             self.emit('content-saved', content)
             self._current_content = content
 
-    def enter_edit_mode(self):
+    def enter_edit_mode(self, cursor_at_end=False):
         if not self.is_editing:
             self.is_editing = True
             self.processing_enter_edit_mode = True
             self.content_buffer.set_text(self._current_content)
-            start_iter = self.content_buffer.get_start_iter()
-            self.content_buffer.place_cursor(start_iter)
+            if cursor_at_end:
+                end_iter = self.content_buffer.get_end_iter()
+                self.content_buffer.place_cursor(end_iter)
+            else:
+                start_iter = self.content_buffer.get_start_iter()
+                self.content_buffer.place_cursor(start_iter)
             self.content_stack.set_visible_child_name('edit')
             self.source_view.grab_focus()
             GLib.idle_add(self._reset_processing_enter_edit_mode_flag)

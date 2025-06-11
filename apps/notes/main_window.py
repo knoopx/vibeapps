@@ -240,12 +240,12 @@ class MainWindow(Adw.ApplicationWindow):
                     if row:
                         if not self.note_list.get_selected_row() == row:
                             self.note_list.select_row(row)
-                        self.note_content_view.enter_edit_mode()
+                        self.note_content_view.enter_edit_mode(cursor_at_end=True)
                 except ValueError:
                     print(f'Could not auto-select and edit new note: {new_note.relative_path}')
                     if self.current_note == new_note:
                         self.load_note_into_view()
-                        self.note_content_view.enter_edit_mode()
+                        self.note_content_view.enter_edit_mode(cursor_at_end=True)
             else:
                 print(f'Error creating note via repository: {relative_path}')
 
