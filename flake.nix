@@ -18,7 +18,6 @@
       music = pkgs.callPackage ./apps/music/music.nix {};
       notes = pkgs.callPackage ./apps/notes/notes.nix {};
       process-manager = pkgs.callPackage ./apps/process-manager/process-manager.nix {};
-      reminder = pkgs.callPackage ./apps/reminder/reminder.nix {};
       webkit-shell = pkgs.callPackage ./apps/webkit-shell/webkit-shell.nix {};
       windows = pkgs.callPackage ./apps/windows/windows.nix {};
       nix-packages = pkgs.callPackage ./apps/nix-packages/nix-packages.nix {};

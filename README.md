@@ -146,7 +146,6 @@ The following programs can be enabled individually:
 - `music` - Music library browser with album management
 - `notes` - Markdown note-taking with wiki-links and live preview
 - `nix-packages` - Nix package repository browser and search
-- `reminder` - Calendar event creation interface
 - `scratchpad` - Interactive mathematical calculator
 - `webkit-shell` - Minimal web browser for wrapping web applications
 - `windows` - Window manager for niri with focus/close actions
