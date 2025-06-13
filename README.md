@@ -143,7 +143,6 @@ The following programs can be enabled individually:
 - `chat` - OpenAI API chat interface with markdown rendering
 - `dataset-viewer` - Image/caption dataset viewer for ML workflows
 - `launcher` - Fast application launcher with search
-- `mdx-editor` - Advanced markdown editor with live React components
 - `music` - Music library browser with album management
 - `notes` - Markdown note-taking with wiki-links and live preview
 - `nix-packages` - Nix package repository browser and search

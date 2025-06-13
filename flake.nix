@@ -15,7 +15,6 @@
       chat = pkgs.callPackage ./apps/chat/chat.nix {};
       dataset-viewer = pkgs.callPackage ./apps/dataset-viewer/dataset-viewer.nix {};
       launcher = pkgs.callPackage ./apps/launcher/launcher.nix {};
-      mdx-editor = pkgs.callPackage ./apps/mdx-editor/mdx-editor.nix {};
       music = pkgs.callPackage ./apps/music/music.nix {};
       notes = pkgs.callPackage ./apps/notes/notes.nix {};
       process-manager = pkgs.callPackage ./apps/process-manager/process-manager.nix {};
