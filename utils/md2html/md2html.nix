@@ -7,7 +7,7 @@
     name = "md2html";
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-y/C7TWXhcQNrJMSDp1XsEzNtrzOMHHougL4yP4YeVZ0=";
+    outputHash = "sha256-cuh1MWEEZ4/rS6T/G9qxe3Nr7WTuH3wXwY6uFTZH1B4=";
     src = ./.;
 
     buildPhase = ''
