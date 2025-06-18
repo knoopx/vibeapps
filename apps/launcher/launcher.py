@@ -1,24 +1,27 @@
 #!/usr/bin/env python
 import gi
-gi.require_version('Gtk', '4.0')
-gi.require_version('Adw', '1')
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gio, Gdk, GLib
 import os
 import json
 from pathlib import Path
 
-class AppHistory:
 
+class AppHistory:
     def __init__(self):
-        data_home = os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))
-        self.data_file = Path(data_home) / 'launcher' / 'history.json'
+        data_home = os.environ.get(
+            "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
+        )
+        self.data_file = Path(data_home) / "launcher" / "history.json"
         self.term_app_launches = self._load_data()
 
     def _load_data(self):
         try:
             self.data_file.parent.mkdir(parents=True, exist_ok=True)
             if self.data_file.exists():
-                with open(self.data_file, 'r') as f:
+                with open(self.data_file, "r") as f:
                     return json.load(f)
         except Exception:
             pass
@@ -27,7 +30,7 @@ class AppHistory:
     def _save_data(self):
         try:
             self.data_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.data_file, 'w') as f:
+            with open(self.data_file, "w") as f:
                 json.dump(self.term_app_launches, f, indent=2)
         except Exception:
             pass
@@ -38,7 +41,9 @@ class AppHistory:
         normalized_term = search_term.strip().lower()
         if normalized_term not in self.term_app_launches:
             self.term_app_launches[normalized_term] = {}
-        self.term_app_launches[normalized_term][app_id] = self.term_app_launches[normalized_term].get(app_id, 0) + 1
+        self.term_app_launches[normalized_term][app_id] = (
+            self.term_app_launches[normalized_term].get(app_id, 0) + 1
+        )
         self._save_data()
 
     def get_total_launch_count(self, app_id):
@@ -69,13 +74,13 @@ class AppHistory:
                     partial_score += app_counts[app_id] * 10
         return partial_score + self.get_total_launch_count(app_id)
 
-class LauncherWindow(Adw.ApplicationWindow):
 
+class LauncherWindow(Adw.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.app_history = AppHistory()
         self.set_default_size(500, 900)
-        self.set_title('Applications')
+        self.set_title("Applications")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(box)
         header = Adw.HeaderBar()
@@ -84,7 +89,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         header.set_title_widget(self.search_entry)
         box.append(header)
         key_controller = Gtk.EventControllerKey()
-        key_controller.connect('key-pressed', self.on_key_press)
+        key_controller.connect("key-pressed", self.on_key_press)
         self.search_entry.add_controller(key_controller)
         self.list_box = Gtk.ListBox()
         self.list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
@@ -95,11 +100,11 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.scrolled = scrolled
         box.append(scrolled)
         self.load_apps()
-        self.search_entry.connect('search-changed', self.on_search_changed)
-        self.search_entry.connect('activate', self.on_search_activate)
-        self.list_box.connect('row-activated', self.on_row_activated)
-        self.connect('close-request', self.on_close_request)
-        self.connect('map', self.on_window_map)
+        self.search_entry.connect("search-changed", self.on_search_changed)
+        self.search_entry.connect("activate", self.on_search_activate)
+        self.list_box.connect("row-activated", self.on_row_activated)
+        self.connect("close-request", self.on_close_request)
+        self.connect("map", self.on_window_map)
 
     def on_window_map(self, window):
         self.search_entry.grab_focus()
@@ -117,8 +122,16 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def load_apps(self):
         self.apps = []
-        unsorted_apps = [app_info for app_info in Gio.AppInfo.get_all() if app_info.should_show()]
-        sorted_apps = sorted(unsorted_apps, key=lambda app: (-self.app_history.get_total_launch_count(app.get_id()), app.get_name().lower()))
+        unsorted_apps = [
+            app_info for app_info in Gio.AppInfo.get_all() if app_info.should_show()
+        ]
+        sorted_apps = sorted(
+            unsorted_apps,
+            key=lambda app: (
+                -self.app_history.get_total_launch_count(app.get_id()),
+                app.get_name().lower(),
+            ),
+        )
         for app_info in sorted_apps:
             self.apps.append(app_info)
             row = Gtk.ListBoxRow()
@@ -143,7 +156,9 @@ class LauncherWindow(Adw.ApplicationWindow):
         for row in self.list_box:
             app_name = row.app_info.get_name().lower()
             if search_text in app_name:
-                relevance_score = self.app_history.get_search_relevance_score(row.app_info.get_id(), search_text)
+                relevance_score = self.app_history.get_search_relevance_score(
+                    row.app_info.get_id(), search_text
+                )
                 visible_rows.append((row, relevance_score))
                 row.set_visible(True)
             else:
@@ -209,7 +224,11 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def move_selection(self, direction):
         selected = self.list_box.get_selected_row()
-        start_index = selected.get_index() if selected else -1 if direction > 0 else self.list_box.observe_children().get_n_items()
+        start_index = (
+            selected.get_index()
+            if selected
+            else -1 if direction > 0 else self.list_box.observe_children().get_n_items()
+        )
         next_row = self.find_next_visible_row(start_index, direction)
         if next_row:
             self.list_box.select_row(next_row)
@@ -230,11 +249,13 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.app_history.record_launch(app_info.get_id(), search_term)
         try:
             context = self.get_display().get_app_launch_context()
-            launched = app_info.launch_uris_as_manager([], context, GLib.SpawnFlags.SEARCH_PATH, None, None)
+            launched = app_info.launch_uris_as_manager(
+                [], context, GLib.SpawnFlags.SEARCH_PATH, None, None
+            )
             if not launched:
-                print(f'Failed to launch {app_info.get_id()}')
+                print(f"Failed to launch {app_info.get_id()}")
         except Exception as e:
-            print(f'Error launching {app_info.get_id()}: {str(e)}')
+            print(f"Error launching {app_info.get_id()}: {str(e)}")
         self.close()
 
     def on_row_activated(self, list_box, row):
@@ -258,10 +279,14 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.scroll_to_row(first_visible)
         self.search_entry.grab_focus()
 
+
 class Launcher(Adw.Application):
 
     def __init__(self):
-        super().__init__(application_id='net.knoopx.launcher', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        super().__init__(
+            application_id="net.knoopx.launcher",
+            flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
+        )
         self.window = None
 
     def do_startup(self):
@@ -280,6 +305,8 @@ class Launcher(Adw.Application):
     def do_command_line(self, command_line):
         self.activate()
         return 0
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     app = Launcher()
     app.run(None)
