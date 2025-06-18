@@ -448,7 +448,7 @@ class EDSCalendarLister:
                             try:
                                 birthday = datetime(year, birth_date.get_month(), birth_date.get_day())
                                 if start_date <= birthday <= end_date:
-                                    age = year - birth_date.get_year() if birth_date.get_year() > 1900 else None
+                                    age = year - birth_date.get_year() if birth_date.get_year() > 1620 else None
                                     summary = f"{name}'s Birthday"
                                     if age:
                                         summary += f' ({age} years old)'

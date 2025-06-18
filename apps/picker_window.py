@@ -24,7 +24,7 @@ class PickerWindow(Adw.ApplicationWindow, ABC, metaclass=GObjectABCMeta):
         self,
         title: str = "Picker",
         search_placeholder: str = "Search...",
-        window_size: tuple = (500, 900),
+        window_size: tuple = (500, 620),
         search_delay_ms: int = 300,
         context_menu_shortcut: Optional[str] = "<Control>j",
         global_context_menu_shortcut: Optional[str] = "<Control><Shift>j",

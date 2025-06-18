@@ -79,7 +79,7 @@ class LauncherWindow(Adw.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.app_history = AppHistory()
-        self.set_default_size(500, 900)
+        self.set_default_size(500, 620)
         self.set_title("Applications")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(box)
