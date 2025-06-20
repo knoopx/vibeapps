@@ -597,6 +597,9 @@ class WirelessNetworksWindow(PickerWindow):
         if not self._should_refresh:
             return GLib.SOURCE_REMOVE
 
+        # Show loading state while refreshing
+        self._show_loading()
+
         def get_networks():
             try:
                 # Check if WiFi interface exists before scanning
