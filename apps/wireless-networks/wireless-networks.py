@@ -5,64 +5,82 @@ import threading
 import sys
 from typing import Optional, Dict, Any
 
-gi.require_version('Gtk', '4.0')
-gi.require_version('Adw', '1')
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
 from picker_window import PickerWindow, PickerItem
 
-APP_ID = 'net.knoopx.wireless'
+APP_ID = "net.knoopx.wireless-networks"
+
 
 class WiFiNetwork(PickerItem):
-    __gtype_name__ = 'WiFiNetwork'
+    __gtype_name__ = "WiFiNetwork"
 
-    ssid = GObject.Property(type=str, default='')
-    bssid = GObject.Property(type=str, default='')
-    mode = GObject.Property(type=str, default='')
-    channel = GObject.Property(type=str, default='')
-    rate = GObject.Property(type=str, default='')
+    ssid = GObject.Property(type=str, default="")
+    bssid = GObject.Property(type=str, default="")
+    mode = GObject.Property(type=str, default="")
+    channel = GObject.Property(type=str, default="")
+    rate = GObject.Property(type=str, default="")
     signal = GObject.Property(type=int, default=0)
-    bars = GObject.Property(type=str, default='')
-    security = GObject.Property(type=str, default='')
+    bars = GObject.Property(type=str, default="")
+    security = GObject.Property(type=str, default="")
     active = GObject.Property(type=bool, default=False)
     in_use = GObject.Property(type=bool, default=False)
 
     def __init__(self, network_data: Dict[str, Any]):
         super().__init__()
-        self.ssid = network_data.get('SSID', '').strip()
-        self.bssid = network_data.get('BSSID', '').strip()
-        self.mode = network_data.get('MODE', '').strip()
-        self.channel = network_data.get('CHAN', '').strip()
-        self.rate = network_data.get('RATE', '').strip()
-        self.signal = self._parse_signal(network_data.get('SIGNAL', '0'))
-        self.bars = network_data.get('BARS', '').strip()
-        self.security = network_data.get('SECURITY', '').strip()
-        self.active = network_data.get('ACTIVE', '').strip().lower() == 'yes'
-        self.in_use = network_data.get('IN-USE', '').strip() == '*'
+        self.ssid = network_data.get("SSID", "").strip()
+        self.bssid = network_data.get("BSSID", "").strip()
+        self.mode = network_data.get("MODE", "").strip()
+        self.channel = network_data.get("CHAN", "").strip()
+        self.rate = network_data.get("RATE", "").strip()
+        self.signal = self._parse_signal(network_data.get("SIGNAL", "0"))
+        self.bars = network_data.get("BARS", "").strip()
+        self.security = network_data.get("SECURITY", "").strip()
+        self.active = network_data.get("ACTIVE", "").strip().lower() == "yes"
+        self.in_use = network_data.get("IN-USE", "").strip() == "*"
 
     def _parse_signal(self, signal_str: str) -> int:
         """Parse signal strength from string like '75' or '75 %'"""
         try:
-            return int(signal_str.replace('%', '').strip())
+            # Remove any non-numeric characters and parse as int
+            import re
+            numbers = re.findall(r'-?\d+', signal_str)
+            if numbers:
+                signal = int(numbers[0])
+                # Convert negative dBm to percentage (rough approximation)
+                if signal < 0:
+                    # Convert dBm to percentage: -30dBm = excellent, -90dBm = poor
+                    signal = max(0, min(100, 2 * (signal + 100)))
+                return signal
+            return 0
         except (ValueError, AttributeError):
             return 0
 
     def get_signal_icon(self) -> str:
         """Get appropriate signal strength icon"""
-        if self.signal >= 75:
-            return 'network-wireless-signal-excellent-symbolic'
-        elif self.signal >= 50:
-            return 'network-wireless-signal-good-symbolic'
-        elif self.signal >= 25:
-            return 'network-wireless-signal-ok-symbolic'
+        if self.signal >= 80:
+            return "network-wireless-signal-excellent-symbolic"
+        elif self.signal >= 60:
+            return "network-wireless-signal-good-symbolic"
+        elif self.signal >= 40:
+            return "network-wireless-signal-ok-symbolic"
+        elif self.signal >= 20:
+            return "network-wireless-signal-weak-symbolic"
         else:
-            return 'network-wireless-signal-weak-symbolic'
+            return "network-wireless-signal-none-symbolic"
 
     def get_security_icon(self) -> str:
         """Get appropriate security icon"""
-        if self.security and self.security != '--':
-            return 'security-high-symbolic'
+        if self.security and self.security != "--":
+            if "WPA3" in self.security or "WPA2" in self.security:
+                return "network-wireless-encrypted-symbolic"
+            elif "WEP" in self.security:
+                return "security-medium-symbolic"
+            else:
+                return "security-high-symbolic"
         else:
-            return 'security-low-symbolic'
+            return "network-wireless-symbolic"
 
     def __eq__(self, other):
         if not isinstance(other, WiFiNetwork):
@@ -71,6 +89,7 @@ class WiFiNetwork(PickerItem):
 
     def __hash__(self):
         return hash(self.bssid)
+
 
 class WirelessNetworksWindow(PickerWindow):
 
@@ -81,11 +100,8 @@ class WirelessNetworksWindow(PickerWindow):
         self._should_refresh = True
         self._password_dialog = None
         super().__init__(
-            title='Wireless Networks',
-            search_placeholder='Search by SSID...',
-            **kwargs
+            title="Wireless Networks", search_placeholder="Search by SSID...", **kwargs
         )
-        self._start_refresh_timer()
 
     def get_item_type(self):
         return WiFiNetwork
@@ -101,9 +117,11 @@ class WirelessNetworksWindow(PickerWindow):
         query_lower = query.lower()
         filtered = []
         for network in self._current_networks:
-            if (query_lower in network.ssid.lower() or
-                query_lower in network.bssid.lower() or
-                query_lower in network.security.lower()):
+            if (
+                query_lower in network.ssid.lower()
+                or query_lower in network.bssid.lower()
+                or query_lower in network.security.lower()
+            ):
                 filtered.append(network)
 
         self._filtered_networks = filtered
@@ -131,7 +149,7 @@ class WirelessNetworksWindow(PickerWindow):
             margin_top=8,
             margin_bottom=8,
             margin_start=12,
-            margin_end=12
+            margin_end=12,
         )
 
         # Status icon (connected/not connected)
@@ -150,7 +168,7 @@ class WirelessNetworksWindow(PickerWindow):
         header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         ssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         ssid_label.set_ellipsize(Pango.EllipsizeMode.END)
-        ssid_label.add_css_class('heading')
+        ssid_label.add_css_class("heading")
 
         security_icon = Gtk.Image()
         security_icon.set_pixel_size(14)
@@ -161,11 +179,11 @@ class WirelessNetworksWindow(PickerWindow):
         # Details line
         details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         security_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        security_label.add_css_class('caption')
+        security_label.add_css_class("caption")
         security_label.set_opacity(0.7)
 
         channel_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        channel_label.add_css_class('caption')
+        channel_label.add_css_class("caption")
         channel_label.set_opacity(0.7)
 
         details_box.append(security_label)
@@ -179,7 +197,7 @@ class WirelessNetworksWindow(PickerWindow):
         signal_box.set_valign(Gtk.Align.CENTER)
 
         signal_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
-        signal_label.add_css_class('caption')
+        signal_label.add_css_class("caption")
         signal_label.set_width_chars(6)
 
         signal_box.append(signal_label)
@@ -226,7 +244,9 @@ class WirelessNetworksWindow(PickerWindow):
         # Get details box children
         if details_box:
             security_label = details_box.get_first_child()
-            channel_label = security_label.get_next_sibling() if security_label else None
+            channel_label = (
+                security_label.get_next_sibling() if security_label else None
+            )
         else:
             security_label = None
             channel_label = None
@@ -236,20 +256,23 @@ class WirelessNetworksWindow(PickerWindow):
 
         # Bind data
         if ssid_label:
-            ssid_label.set_text(item.ssid or 'Hidden Network')
+            ssid_label.set_text(item.ssid or "Hidden Network")
 
         # Status icon
         if status_icon:
             if item.in_use:
-                status_icon.set_from_icon_name('network-wireless-connected-symbolic')
-                status_icon.add_css_class('success')
+                status_icon.set_from_icon_name("network-wireless-connected-symbolic")
+                status_icon.add_css_class("success")
+                status_icon.set_visible(True)
             elif item.active:
-                status_icon.set_from_icon_name('network-wireless-acquiring-symbolic')
-                status_icon.add_css_class('warning')
+                status_icon.set_from_icon_name("network-wireless-acquiring-symbolic")
+                status_icon.add_css_class("warning")
+                status_icon.set_visible(True)
             else:
-                status_icon.set_from_icon_name('network-wireless-disconnected-symbolic')
-                status_icon.remove_css_class('success')
-                status_icon.remove_css_class('warning')
+                # Hide the status icon for disconnected networks
+                status_icon.set_visible(False)
+                status_icon.remove_css_class("success")
+                status_icon.remove_css_class("warning")
 
         # Signal icon
         if signal_icon:
@@ -261,29 +284,45 @@ class WirelessNetworksWindow(PickerWindow):
 
         # Security text
         if security_label:
-            security_text = item.security if item.security and item.security != '--' else 'Open'
+            security_text = (
+                item.security if item.security and item.security != "--" else "Open"
+            )
             security_label.set_text(security_text)
 
         # Channel
         if channel_label:
-            channel_text = f'Ch {item.channel}' if item.channel else ''
+            if item.channel and item.channel.strip():
+                # Try to parse channel as hex if it looks like hex, otherwise use as-is
+                try:
+                    if item.channel.strip().isdigit():
+                        channel_text = f"Ch {item.channel}"
+                    elif len(item.channel.strip()) <= 2 and all(c in '0123456789ABCDEFabcdef' for c in item.channel.strip()):
+                        # Convert hex to decimal
+                        channel_num = int(item.channel.strip(), 16)
+                        channel_text = f"Ch {channel_num}"
+                    else:
+                        channel_text = f"Ch {item.channel}"
+                except ValueError:
+                    channel_text = f"Ch {item.channel}"
+            else:
+                channel_text = ""
             channel_label.set_text(channel_text)
 
         # Signal strength
         if signal_label:
-            signal_label.set_text(f'{item.signal}%')
+            signal_label.set_text(f"{item.signal}%")
 
     def get_empty_icon(self):
-        return 'network-wireless-symbolic'
+        return "network-wireless-symbolic"
 
     def get_loading_icon(self):
-        return 'network-wireless-acquiring-symbolic'
+        return "network-wireless-acquiring-symbolic"
 
     def get_empty_title(self):
-        return 'No Wireless Networks Found'
+        return "No Wireless Networks Found"
 
     def get_empty_description(self):
-        return 'Make sure wireless is enabled and try refreshing.'
+        return "Make sure wireless is enabled and try refreshing."
 
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item or not item.ssid:
@@ -292,29 +331,29 @@ class WirelessNetworksWindow(PickerWindow):
         menu_model = Gio.Menu.new()
 
         if item.in_use:
-            menu_model.append('Disconnect', 'context.on_disconnect_action')
-            menu_model.append('Show Details', 'context.on_show_details_action')
+            menu_model.append("Disconnect", "context.on_disconnect_action")
+            menu_model.append("Show Details", "context.on_show_details_action")
         else:
-            menu_model.append('Connect', 'context.on_connect_action')
+            menu_model.append("Connect", "context.on_connect_action")
 
-        menu_model.append('Copy SSID', 'context.on_copy_ssid_action')
-        menu_model.append('Copy BSSID', 'context.on_copy_bssid_action')
-        menu_model.append('Forget Network', 'context.on_forget_network_action')
+        menu_model.append("Copy SSID", "context.on_copy_ssid_action")
+        menu_model.append("Copy BSSID", "context.on_copy_bssid_action")
+        menu_model.append("Forget Network", "context.on_forget_network_action")
 
         return menu_model
 
     def get_global_context_menu_model(self) -> Optional[Gio.Menu]:
         menu_model = Gio.Menu.new()
-        menu_model.append('Refresh Networks', 'global.on_refresh_action')
-        menu_model.append('Enable WiFi', 'global.on_enable_wifi_action')
-        menu_model.append('Disable WiFi', 'global.on_disable_wifi_action')
+        menu_model.append("Refresh Networks", "global.on_refresh_action")
+        menu_model.append("Enable WiFi", "global.on_enable_wifi_action")
+        menu_model.append("Disable WiFi", "global.on_disable_wifi_action")
         return menu_model
 
     def get_global_context_menu_actions(self) -> dict:
         return {
-            'on_refresh_action': 'on_refresh_action',
-            'on_enable_wifi_action': 'on_enable_wifi_action',
-            'on_disable_wifi_action': 'on_disable_wifi_action'
+            "on_refresh_action": "on_refresh_action",
+            "on_enable_wifi_action": "on_enable_wifi_action",
+            "on_disable_wifi_action": "on_disable_wifi_action",
         }
 
     # Context menu actions
@@ -355,20 +394,17 @@ class WirelessNetworksWindow(PickerWindow):
         self._refresh_networks()
 
     def on_enable_wifi_action(self, action, param):
-        self._run_nmcli_command(['radio', 'wifi', 'on'])
+        self._run_nmcli_command(["radio", "wifi", "on"])
         GLib.timeout_add(1000, self._refresh_networks)
 
     def on_disable_wifi_action(self, action, param):
-        self._run_nmcli_command(['radio', 'wifi', 'off'])
+        self._run_nmcli_command(["radio", "wifi", "off"])
         GLib.timeout_add(1000, self._refresh_networks)
 
     def _show_network_details(self, item):
-        dialog = Adw.MessageDialog.new(
-            self,
-            f'WiFi Network Details: {item.ssid}'
-        )
+        dialog = Adw.MessageDialog.new(self, f"WiFi Network Details: {item.ssid}")
 
-        details = f'''
+        details = f"""
 <b>SSID:</b> {GLib.markup_escape_text(item.ssid)}
 <b>BSSID:</b> {GLib.markup_escape_text(item.bssid)}
 <b>Security:</b> {GLib.markup_escape_text(item.security or 'Open')}
@@ -377,17 +413,17 @@ class WirelessNetworksWindow(PickerWindow):
 <b>Mode:</b> {item.mode}
 <b>Rate:</b> {item.rate}
 <b>Status:</b> {'Connected' if item.in_use else 'Available'}
-        '''.strip()
+        """.strip()
 
         dialog.set_body_use_markup(True)
         dialog.set_body(details)
-        dialog.add_response('close', 'Close')
-        dialog.set_default_response('close')
+        dialog.add_response("close", "Close")
+        dialog.set_default_response("close")
         dialog.present()
 
     def _connect_to_network(self, item):
         """Connect to a WiFi network"""
-        if item.security and item.security != '--':
+        if item.security and item.security != "--":
             # Network requires password
             self._show_password_dialog(item)
         else:
@@ -396,11 +432,8 @@ class WirelessNetworksWindow(PickerWindow):
 
     def _show_password_dialog(self, item):
         """Show password input dialog"""
-        dialog = Adw.MessageDialog.new(
-            self,
-            f'Connect to {item.ssid}'
-        )
-        dialog.set_body('This network requires a password.')
+        dialog = Adw.MessageDialog.new(self, f"Connect to {item.ssid}")
+        dialog.set_body("This network requires a password.")
 
         # Create password entry
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -416,19 +449,19 @@ class WirelessNetworksWindow(PickerWindow):
         content_box.append(password_entry)
         dialog.set_extra_child(content_box)
 
-        dialog.add_response('cancel', 'Cancel')
-        dialog.add_response('connect', 'Connect')
-        dialog.set_response_appearance('connect', Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response('connect')
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("connect", "Connect")
+        dialog.set_response_appearance("connect", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("connect")
 
         def on_response(dialog, response):
-            if response == 'connect':
+            if response == "connect":
                 password = password_entry.get_text()
                 self._perform_connection(item.ssid, password)
             dialog.destroy()
 
-        dialog.connect('response', on_response)
-        password_entry.connect('activate', lambda entry: dialog.response('connect'))
+        dialog.connect("response", on_response)
+        password_entry.connect("activate", lambda entry: dialog.response("connect"))
         dialog.present()
 
         # Focus password entry after dialog is shown
@@ -436,22 +469,25 @@ class WirelessNetworksWindow(PickerWindow):
 
     def _perform_connection(self, ssid, password):
         """Perform the actual connection"""
+
         def connect_thread():
             try:
-                cmd = ['nmcli', 'device', 'wifi', 'connect', ssid]
+                cmd = ["nmcli", "device", "wifi", "connect", ssid]
                 if password:
-                    cmd.extend(['password', password])
+                    cmd.extend(["password", password])
 
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+                GLib.idle_add(
+                    self._on_connection_result,
+                    ssid,
+                    result.returncode == 0,
+                    result.stderr,
                 )
-
-                GLib.idle_add(self._on_connection_result, ssid, result.returncode == 0, result.stderr)
             except subprocess.TimeoutExpired:
-                GLib.idle_add(self._on_connection_result, ssid, False, 'Connection timeout')
+                GLib.idle_add(
+                    self._on_connection_result, ssid, False, "Connection timeout"
+                )
             except Exception as e:
                 GLib.idle_add(self._on_connection_result, ssid, False, str(e))
 
@@ -461,14 +497,11 @@ class WirelessNetworksWindow(PickerWindow):
     def _on_connection_result(self, ssid, success, error_msg):
         """Handle connection result"""
         if success:
-            self._show_toast(f'Connected to {ssid}')
+            self._show_toast(f"Connected to {ssid}")
         else:
-            error_dialog = Adw.MessageDialog.new(
-                self,
-                'Connection Failed'
-            )
-            error_dialog.set_body(f'Failed to connect to {ssid}.\n\n{error_msg}')
-            error_dialog.add_response('ok', 'OK')
+            error_dialog = Adw.MessageDialog.new(self, "Connection Failed")
+            error_dialog.set_body(f"Failed to connect to {ssid}.\n\n{error_msg}")
+            error_dialog.add_response("ok", "OK")
             error_dialog.present()
 
         # Refresh networks to update status
@@ -476,20 +509,23 @@ class WirelessNetworksWindow(PickerWindow):
 
     def _disconnect_from_network(self, item):
         """Disconnect from current network"""
+
         def disconnect_thread():
             try:
                 wifi_interface = self._get_wifi_interface()
                 if wifi_interface is None:
-                    GLib.idle_add(self._show_wifi_interface_error, 'disconnect')
+                    GLib.idle_add(self._show_wifi_interface_error, "disconnect")
                     return
 
                 result = subprocess.run(
-                    ['nmcli', 'device', 'disconnect', wifi_interface],
+                    ["nmcli", "device", "disconnect", wifi_interface],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
                 )
-                GLib.idle_add(self._on_disconnection_result, item.ssid, result.returncode == 0)
+                GLib.idle_add(
+                    self._on_disconnection_result, item.ssid, result.returncode == 0
+                )
             except Exception:
                 GLib.idle_add(self._on_disconnection_result, item.ssid, False)
 
@@ -499,57 +535,55 @@ class WirelessNetworksWindow(PickerWindow):
     def _on_disconnection_result(self, ssid, success):
         """Handle disconnection result"""
         if success:
-            self._show_toast(f'Disconnected from {ssid}')
+            self._show_toast(f"Disconnected from {ssid}")
 
         # Refresh networks to update status
         GLib.timeout_add(1000, self._refresh_networks)
 
     def _forget_network(self, item):
         """Forget a saved network"""
-        dialog = Adw.MessageDialog.new(
-            self,
-            'Forget Network'
-        )
+        dialog = Adw.MessageDialog.new(self, "Forget Network")
         dialog.set_body(f'Are you sure you want to forget the network "{item.ssid}"?')
-        dialog.add_response('cancel', 'Cancel')
-        dialog.add_response('forget', 'Forget')
-        dialog.set_response_appearance('forget', Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("forget", "Forget")
+        dialog.set_response_appearance("forget", Adw.ResponseAppearance.DESTRUCTIVE)
 
         def on_response(dialog, response):
-            if response == 'forget':
+            if response == "forget":
                 self._perform_forget(item.ssid)
             dialog.destroy()
 
-        dialog.connect('response', on_response)
+        dialog.connect("response", on_response)
         dialog.present()
 
     def _perform_forget(self, ssid):
         """Actually forget the network"""
+
         def forget_thread():
             try:
                 # Get connection UUID first
                 result = subprocess.run(
-                    ['nmcli', '-t', '-f', 'UUID,NAME', 'connection', 'show'],
+                    ["nmcli", "-t", "-f", "UUID,NAME", "connection", "show"],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
 
                 uuid = None
-                for line in result.stdout.split('\n'):
+                for line in result.stdout.split("\n"):
                     if line and ssid in line:
-                        uuid = line.split(':')[0]
+                        uuid = line.split(":")[0]
                         break
 
                 if uuid:
                     subprocess.run(
-                        ['nmcli', 'connection', 'delete', uuid],
+                        ["nmcli", "connection", "delete", uuid],
                         capture_output=True,
-                        text=True
+                        text=True,
                     )
-                    GLib.idle_add(self._show_toast, f'Forgot network {ssid}')
+                    GLib.idle_add(self._show_toast, f"Forgot network {ssid}")
 
             except Exception as e:
-                print(f'Error forgetting network: {e}')
+                print(f"Error forgetting network: {e}")
 
         thread = threading.Thread(target=forget_thread, daemon=True)
         thread.start()
@@ -560,7 +594,7 @@ class WirelessNetworksWindow(PickerWindow):
         toast.set_timeout(3)
 
         # Find the toast overlay (create one if needed)
-        if not hasattr(self, '_toast_overlay'):
+        if not hasattr(self, "_toast_overlay"):
             # Wrap existing content in toast overlay
             content = self.get_content()
             self.set_content(None)
@@ -573,11 +607,12 @@ class WirelessNetworksWindow(PickerWindow):
 
     def _run_nmcli_command(self, args):
         """Run nmcli command in background"""
+
         def run_command():
             try:
-                subprocess.run(['nmcli'] + args, capture_output=True, text=True)
+                subprocess.run(["nmcli"] + args, capture_output=True, text=True)
             except Exception as e:
-                print(f'Error running nmcli command: {e}')
+                print(f"Error running nmcli command: {e}")
 
         thread = threading.Thread(target=run_command, daemon=True)
         thread.start()
@@ -596,53 +631,62 @@ class WirelessNetworksWindow(PickerWindow):
                     return
 
                 # Run nmcli to get WiFi networks
-                result = subprocess.run([
-                    'nmcli', '-t', '-f',
-                    'IN-USE,SSID,BSSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY,ACTIVE',
-                    'device', 'wifi', 'list'
-                ], capture_output=True, text=True, timeout=15)
+                result = subprocess.run(
+                    [
+                        "nmcli",
+                        "-t",
+                        "-f",
+                        "IN-USE,SSID,BSSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY,ACTIVE",
+                        "device",
+                        "wifi",
+                        "list",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
 
                 if result.returncode != 0:
                     GLib.idle_add(self._update_network_list, [])
                     return
 
                 networks = []
-                lines = result.stdout.strip().split('\n')
+                lines = result.stdout.strip().split("\n")
 
                 for line in lines:
                     if not line.strip():
                         continue
 
                     # Parse the colon-separated output
-                    fields = line.split(':')
+                    fields = line.split(":")
                     if len(fields) >= 10:
                         network_data = {
-                            'IN-USE': fields[0],
-                            'SSID': fields[1],
-                            'BSSID': fields[2],
-                            'MODE': fields[3],
-                            'CHAN': fields[4],
-                            'RATE': fields[5],
-                            'SIGNAL': fields[6],
-                            'BARS': fields[7],
-                            'SECURITY': fields[8],
-                            'ACTIVE': fields[9]
+                            "IN-USE": fields[0],
+                            "SSID": fields[1],
+                            "BSSID": fields[2],
+                            "MODE": fields[3],
+                            "CHAN": fields[4],
+                            "RATE": fields[5],
+                            "SIGNAL": fields[6],
+                            "BARS": fields[7],
+                            "SECURITY": fields[8],
+                            "ACTIVE": fields[9],
                         }
 
                         # Skip empty SSIDs (hidden networks without names)
-                        if network_data['SSID'].strip():
+                        if network_data["SSID"].strip():
                             networks.append(WiFiNetwork(network_data))
 
                 # Sort by signal strength (descending) and connection status
-                networks.sort(key=lambda n: (not n.in_use, not n.active, -n.signal))
+                networks.sort(key=lambda n: (not n.in_use, not n.active, n.signal), reverse=True)
 
                 GLib.idle_add(self._update_network_list, networks)
 
             except subprocess.TimeoutExpired:
-                print('Network scan timeout')
+                print("Network scan timeout")
                 GLib.idle_add(self._update_network_list, [])
             except Exception as e:
-                print(f'Error refreshing networks: {e}')
+                print(f"Error refreshing networks: {e}")
                 GLib.idle_add(self._update_network_list, [])
 
         if self._refresh_thread and self._refresh_thread.is_alive():
@@ -668,7 +712,7 @@ class WirelessNetworksWindow(PickerWindow):
         """Update the UI with filtered networks"""
         if not self._filtered_networks:
             self.remove_all_items()
-            self._show_empty('No Networks Found', 'No WiFi networks match your search.')
+            self._show_empty("No Networks Found", "No WiFi networks match your search.")
             return
 
         # Store selected network
@@ -699,10 +743,6 @@ class WirelessNetworksWindow(PickerWindow):
                 return True
         return False
 
-    def _start_refresh_timer(self):
-        """Start periodic refresh of networks"""
-        GLib.timeout_add(10000, self._refresh_networks)  # Refresh every 10 seconds
-
     def on_close_request(self):
         self._should_refresh = False
         return False
@@ -712,31 +752,35 @@ class WirelessNetworksWindow(PickerWindow):
         try:
             # Get all WiFi devices
             result = subprocess.run(
-                ['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE', 'device', 'status'],
+                ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
-                for line in result.stdout.strip().split('\n'):
+                for line in result.stdout.strip().split("\n"):
                     if line:
-                        parts = line.split(':')
+                        parts = line.split(":")
                         if len(parts) >= 3:
                             device, device_type, state = parts[0], parts[1], parts[2]
                             # Look for WiFi devices that are connected or available
-                            if device_type == 'wifi' and state in ['connected', 'disconnected', 'unavailable']:
+                            if device_type == "wifi" and state in [
+                                "connected",
+                                "disconnected",
+                                "unavailable",
+                            ]:
                                 return device
 
             # Try common WiFi interface names
-            common_names = ['wlan0', 'wlp0s20f3', 'wlo1', 'wifi0']
+            common_names = ["wlan0", "wlp0s20f3", "wlo1", "wifi0"]
             for name in common_names:
                 try:
                     check_result = subprocess.run(
-                        ['nmcli', 'device', 'show', name],
+                        ["nmcli", "device", "show", name],
                         capture_output=True,
                         text=True,
-                        timeout=2
+                        timeout=2,
                     )
                     if check_result.returncode == 0:
                         return name
@@ -751,35 +795,30 @@ class WirelessNetworksWindow(PickerWindow):
 
     def _show_wifi_interface_error(self, action):
         """Show error when no WiFi interface is found"""
-        error_dialog = Adw.MessageDialog.new(
-            self,
-            'No WiFi Interface Found'
-        )
+        error_dialog = Adw.MessageDialog.new(self, "No WiFi Interface Found")
         error_dialog.set_body(
-            f'No WiFi interface could be detected on this system.\n\n'
-            f'Cannot {action} without a WiFi interface. Please ensure:\n'
-            f'• WiFi hardware is available\n'
-            f'• NetworkManager is running\n'
-            f'• WiFi drivers are installed'
+            f"No WiFi interface could be detected on this system.\n\n"
+            f"Cannot {action} without a WiFi interface. Please ensure:\n"
+            f"• WiFi hardware is available\n"
+            f"• NetworkManager is running\n"
+            f"• WiFi drivers are installed"
         )
-        error_dialog.add_response('ok', 'OK')
+        error_dialog.add_response("ok", "OK")
         error_dialog.present()
 
     def _show_no_wifi_interface(self):
         """Show empty state when no WiFi interface is available"""
         self._show_empty(
-            'No WiFi Interface Available',
-            'No WiFi interface could be detected on this system.\n\n'
-            'Please ensure WiFi hardware is available and NetworkManager is running.'
+            "No WiFi Interface Available",
+            "No WiFi interface could be detected on this system.\n\n"
+            "Please ensure WiFi hardware is available and NetworkManager is running.",
         )
+
 
 class WirelessNetworksApplication(Adw.Application):
 
     def __init__(self):
-        super().__init__(
-            application_id=APP_ID,
-            flags=Gio.ApplicationFlags.FLAGS_NONE
-        )
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
 
     def do_activate(self):
         win = self.props.active_window
@@ -790,9 +829,11 @@ class WirelessNetworksApplication(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
 
+
 def main():
     app = WirelessNetworksApplication()
     return app.run(sys.argv)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
