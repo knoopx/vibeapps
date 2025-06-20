@@ -27,7 +27,7 @@ class WiFiNetwork(PickerItem):
     def __init__(self, network_data: Dict[str, Any]):
         super().__init__()
         self.ssid = network_data.get("SSID", "").strip()
-        self.bssid = network_data.get("BSSID", "").strip()
+        self.bssid = network_data.get("BSSID", "").strip().replace("\\:", ":")
         self.channel = network_data.get("CHAN", "").strip()
         self.signal = self._parse_signal(network_data.get("SIGNAL", "0"))
         self.security = network_data.get("SECURITY", "").strip()
