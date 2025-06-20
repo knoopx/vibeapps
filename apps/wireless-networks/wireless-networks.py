@@ -3,6 +3,7 @@ import gi
 import subprocess
 import threading
 import sys
+import re
 from typing import Optional, Dict, Any
 
 gi.require_version("Gtk", "4.0")
@@ -44,7 +45,6 @@ class WiFiNetwork(PickerItem):
         """Parse signal strength from string like '75' or '75 %'"""
         try:
             # Remove any non-numeric characters and parse as int
-            import re
             numbers = re.findall(r'-?\d+', signal_str)
             if numbers:
                 signal = int(numbers[0])
@@ -152,10 +152,6 @@ class WirelessNetworksWindow(PickerWindow):
             margin_end=12,
         )
 
-        # Status icon (connected/not connected)
-        status_icon = Gtk.Image()
-        status_icon.set_pixel_size(16)
-
         # Signal strength icon
         signal_icon = Gtk.Image()
         signal_icon.set_pixel_size(20)
@@ -202,7 +198,6 @@ class WirelessNetworksWindow(PickerWindow):
 
         signal_box.append(signal_label)
 
-        main_box.append(status_icon)
         main_box.append(signal_icon)
         main_box.append(info_box)
         main_box.append(signal_box)
@@ -216,9 +211,6 @@ class WirelessNetworksWindow(PickerWindow):
 
         # Get widgets by walking the hierarchy
         child = main_box.get_first_child()
-        status_icon = child
-
-        child = child.get_next_sibling() if child else None
         signal_icon = child
 
         child = child.get_next_sibling() if child else None
@@ -256,23 +248,16 @@ class WirelessNetworksWindow(PickerWindow):
 
         # Bind data
         if ssid_label:
-            ssid_label.set_text(item.ssid or "Hidden Network")
+            ssid_text = item.ssid or "Hidden Network"
+            ssid_label.set_text(ssid_text)
 
-        # Status icon
-        if status_icon:
+            # Make active connections bold
             if item.in_use:
-                status_icon.set_from_icon_name("network-wireless-connected-symbolic")
-                status_icon.add_css_class("success")
-                status_icon.set_visible(True)
-            elif item.active:
-                status_icon.set_from_icon_name("network-wireless-acquiring-symbolic")
-                status_icon.add_css_class("warning")
-                status_icon.set_visible(True)
+                ssid_label.add_css_class("heading")
+                ssid_label.set_markup(f"<b>{GLib.markup_escape_text(ssid_text)}</b>")
             else:
-                # Hide the status icon for disconnected networks
-                status_icon.set_visible(False)
-                status_icon.remove_css_class("success")
-                status_icon.remove_css_class("warning")
+                ssid_label.remove_css_class("heading")
+                ssid_label.set_text(ssid_text)
 
         # Signal icon
         if signal_icon:
@@ -292,18 +277,18 @@ class WirelessNetworksWindow(PickerWindow):
         # Channel
         if channel_label:
             if item.channel and item.channel.strip():
-                # Try to parse channel as hex if it looks like hex, otherwise use as-is
+                channel_str = item.channel.strip()
                 try:
-                    if item.channel.strip().isdigit():
-                        channel_text = f"Ch {item.channel}"
-                    elif len(item.channel.strip()) <= 2 and all(c in '0123456789ABCDEFabcdef' for c in item.channel.strip()):
-                        # Convert hex to decimal
-                        channel_num = int(item.channel.strip(), 16)
-                        channel_text = f"Ch {channel_num}"
+                    # First try to parse as decimal
+                    if channel_str.isdigit():
+                        channel_text = f"Ch {channel_str}"
                     else:
-                        channel_text = f"Ch {item.channel}"
+                        # Try to parse as hexadecimal
+                        channel_num = int(channel_str, 16)
+                        channel_text = f"Ch {channel_num}"
                 except ValueError:
-                    channel_text = f"Ch {item.channel}"
+                    # If all else fails, use the raw value
+                    channel_text = f"Ch {channel_str}"
             else:
                 channel_text = ""
             channel_label.set_text(channel_text)
@@ -677,8 +662,8 @@ class WirelessNetworksWindow(PickerWindow):
                         if network_data["SSID"].strip():
                             networks.append(WiFiNetwork(network_data))
 
-                # Sort by signal strength (descending) and connection status
-                networks.sort(key=lambda n: (not n.in_use, not n.active, n.signal), reverse=True)
+                # Sort by connection status first (in_use, then active), then by signal strength
+                networks.sort(key=lambda n: (not n.in_use, not n.active, -n.signal))
 
                 GLib.idle_add(self._update_network_list, networks)
 
