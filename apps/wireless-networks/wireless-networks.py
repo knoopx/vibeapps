@@ -164,6 +164,12 @@ class WirelessNetworksWindow(PickerWindow):
         header_box.append(ssid_label)
         header_box.append(security_icon)
 
+        # BSSID line
+        bssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        bssid_label.add_css_class("caption")
+        bssid_label.set_opacity(0.7)
+        bssid_label.set_ellipsize(Pango.EllipsizeMode.END)
+
         # Details line
         details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         security_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
@@ -178,6 +184,7 @@ class WirelessNetworksWindow(PickerWindow):
         details_box.append(channel_label)
 
         info_box.append(header_box)
+        info_box.append(bssid_label)
         info_box.append(details_box)
 
         # Signal strength percentage
@@ -219,7 +226,8 @@ class WirelessNetworksWindow(PickerWindow):
         if not header_box:
             return
 
-        details_box = header_box.get_next_sibling()
+        bssid_label = header_box.get_next_sibling()
+        details_box = bssid_label.get_next_sibling() if bssid_label else None
 
         # Get header box children
         ssid_label = header_box.get_first_child()
@@ -250,6 +258,10 @@ class WirelessNetworksWindow(PickerWindow):
             else:
                 ssid_label.remove_css_class("heading")
                 ssid_label.set_text(ssid_text)
+
+        # BSSID
+        if bssid_label:
+            bssid_label.set_text(item.bssid)
 
         # Signal icon
         if signal_icon:
