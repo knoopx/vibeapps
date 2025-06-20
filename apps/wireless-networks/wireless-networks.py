@@ -278,17 +278,8 @@ class WirelessNetworksWindow(PickerWindow):
         if channel_label:
             if item.channel and item.channel.strip():
                 channel_str = item.channel.strip()
-                try:
-                    # First try to parse as decimal
-                    if channel_str.isdigit():
-                        channel_text = f"Ch {channel_str}"
-                    else:
-                        # Try to parse as hexadecimal
-                        channel_num = int(channel_str, 16)
-                        channel_text = f"Ch {channel_num}"
-                except ValueError:
-                    # If all else fails, use the raw value
-                    channel_text = f"Ch {channel_str}"
+                # Channel should be a simple decimal number
+                channel_text = f"Ch {channel_str}"
             else:
                 channel_text = ""
             channel_label.set_text(channel_text)
@@ -395,7 +386,6 @@ class WirelessNetworksWindow(PickerWindow):
 <b>Security:</b> {GLib.markup_escape_text(item.security or 'Open')}
 <b>Signal:</b> {item.signal}% ({item.bars})
 <b>Channel:</b> {item.channel}
-<b>Mode:</b> {item.mode}
 <b>Rate:</b> {item.rate}
 <b>Status:</b> {'Connected' if item.in_use else 'Available'}
         """.strip()
@@ -643,7 +633,27 @@ class WirelessNetworksWindow(PickerWindow):
                         continue
 
                     # Parse the colon-separated output
-                    fields = line.split(":")
+                    # Handle escaped colons in BSSID field properly
+                    fields = []
+                    current_field = ""
+                    i = 0
+                    while i < len(line):
+                        if line[i] == '\\' and i + 1 < len(line) and line[i + 1] == ':':
+                            # Escaped colon, add to current field
+                            current_field += line[i:i+2]
+                            i += 2
+                        elif line[i] == ':':
+                            # Field separator
+                            fields.append(current_field)
+                            current_field = ""
+                            i += 1
+                        else:
+                            current_field += line[i]
+                            i += 1
+                    # Add the last field
+                    if current_field:
+                        fields.append(current_field)
+
                     if len(fields) >= 10:
                         network_data = {
                             "IN-USE": fields[0],
