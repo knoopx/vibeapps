@@ -59,11 +59,6 @@ class ScratchpadWindow(Adw.ApplicationWindow):
         self.results_buffer = self.results_view.get_buffer()
         self._setup_error_styling()
         self._setup_scroll_sync()
-        settings = Gtk.Settings.get_default()
-        settings.connect("notify::gtk-theme-name", self._on_theme_changed)
-        settings.connect(
-            "notify::gtk-application-prefer-dark-theme", self._on_theme_changed
-        )
 
     def _setup_error_styling(self):
         self.error_tag = self.results_buffer.create_tag("error")
@@ -239,12 +234,6 @@ class ScratchpadWindow(Adw.ApplicationWindow):
     def _append_error_line_raw(self, text):
         end_iter = self.results_buffer.get_end_iter()
         self.results_buffer.insert_with_tags(end_iter, text, self.error_tag)
-
-    def _on_theme_changed(self, settings, pspec):
-        if hasattr(self, "error_tag"):
-            self.error_tag.set_property("foreground", "#ff0000")
-        buffer = self.text_view.get_buffer()
-        self.on_text_changed(buffer)
 
 
 class ScratchpadApplication(Adw.Application):
