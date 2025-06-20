@@ -19,27 +19,19 @@ class WiFiNetwork(PickerItem):
 
     ssid = GObject.Property(type=str, default="")
     bssid = GObject.Property(type=str, default="")
-    mode = GObject.Property(type=str, default="")
     channel = GObject.Property(type=str, default="")
-    rate = GObject.Property(type=str, default="")
     signal = GObject.Property(type=int, default=0)
-    bars = GObject.Property(type=str, default="")
     security = GObject.Property(type=str, default="")
     active = GObject.Property(type=bool, default=False)
-    in_use = GObject.Property(type=bool, default=False)
 
     def __init__(self, network_data: Dict[str, Any]):
         super().__init__()
         self.ssid = network_data.get("SSID", "").strip()
         self.bssid = network_data.get("BSSID", "").strip()
-        self.mode = network_data.get("MODE", "").strip()
         self.channel = network_data.get("CHAN", "").strip()
-        self.rate = network_data.get("RATE", "").strip()
         self.signal = self._parse_signal(network_data.get("SIGNAL", "0"))
-        self.bars = network_data.get("BARS", "").strip()
         self.security = network_data.get("SECURITY", "").strip()
         self.active = network_data.get("ACTIVE", "").strip().lower() == "yes"
-        self.in_use = network_data.get("IN-USE", "").strip() == "*"
 
     def _parse_signal(self, signal_str: str) -> int:
         """Parse signal strength from string like '75' or '75 %'"""
@@ -135,7 +127,7 @@ class WirelessNetworksWindow(PickerWindow):
         if not item or not item.ssid:
             return
 
-        if item.in_use:
+        if item.active:
             # Already connected, show details
             self._show_network_details(item)
         else:
@@ -252,7 +244,7 @@ class WirelessNetworksWindow(PickerWindow):
             ssid_label.set_text(ssid_text)
 
             # Make active connections bold
-            if item.in_use:
+            if item.active:
                 ssid_label.add_css_class("heading")
                 ssid_label.set_markup(f"<b>{GLib.markup_escape_text(ssid_text)}</b>")
             else:
@@ -306,7 +298,7 @@ class WirelessNetworksWindow(PickerWindow):
 
         menu_model = Gio.Menu.new()
 
-        if item.in_use:
+        if item.active:
             menu_model.append("Disconnect", "context.on_disconnect_action")
             menu_model.append("Show Details", "context.on_show_details_action")
         else:
@@ -384,10 +376,9 @@ class WirelessNetworksWindow(PickerWindow):
 <b>SSID:</b> {GLib.markup_escape_text(item.ssid)}
 <b>BSSID:</b> {GLib.markup_escape_text(item.bssid)}
 <b>Security:</b> {GLib.markup_escape_text(item.security or 'Open')}
-<b>Signal:</b> {item.signal}% ({item.bars})
+<b>Signal:</b> {item.signal}%
 <b>Channel:</b> {item.channel}
-<b>Rate:</b> {item.rate}
-<b>Status:</b> {'Connected' if item.in_use else 'Available'}
+<b>Status:</b> {'Connected' if item.active else 'Available'}
         """.strip()
 
         dialog.set_body_use_markup(True)
@@ -614,7 +605,7 @@ class WirelessNetworksWindow(PickerWindow):
                         "nmcli",
                         "-t",
                         "-f",
-                        "IN-USE,SSID,BSSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY,ACTIVE",
+                        "ACTIVE,SSID,BSSID,CHAN,SIGNAL,SECURITY",
                         "device",
                         "wifi",
                         "list",
@@ -657,26 +648,22 @@ class WirelessNetworksWindow(PickerWindow):
                     if current_field:
                         fields.append(current_field)
 
-                    if len(fields) >= 10:
+                    if len(fields) >= 6:
                         network_data = {
-                            "IN-USE": fields[0],
+                            "ACTIVE": fields[0],
                             "SSID": fields[1],
                             "BSSID": fields[2],
-                            "MODE": fields[3],
-                            "CHAN": fields[4],
-                            "RATE": fields[5],
-                            "SIGNAL": fields[6],
-                            "BARS": fields[7],
-                            "SECURITY": fields[8],
-                            "ACTIVE": fields[9],
+                            "CHAN": fields[3],
+                            "SIGNAL": fields[4],
+                            "SECURITY": fields[5],
                         }
 
                         # Skip empty SSIDs (hidden networks without names)
                         if network_data["SSID"].strip():
                             networks.append(WiFiNetwork(network_data))
 
-                # Sort by connection status first (in_use, then active), then by signal strength
-                networks.sort(key=lambda n: (not n.in_use, not n.active, -n.signal))
+                # Sort by connection status first (active), then by signal strength
+                networks.sort(key=lambda n: (not n.active, -n.signal))
 
                 GLib.idle_add(self._update_network_list, networks)
 
