@@ -157,9 +157,11 @@ class WirelessNetworksWindow(PickerWindow):
         ssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         ssid_label.set_ellipsize(Pango.EllipsizeMode.END)
         ssid_label.add_css_class("heading")
+        ssid_label.set_hexpand(True)  # Make SSID label expand to fill space
 
         security_icon = Gtk.Image()
         security_icon.set_pixel_size(14)
+        security_icon.set_halign(Gtk.Align.END)  # Align security icon to the right
 
         header_box.append(ssid_label)
         header_box.append(security_icon)
@@ -170,24 +172,10 @@ class WirelessNetworksWindow(PickerWindow):
         bssid_label.set_opacity(0.7)
         bssid_label.set_ellipsize(Pango.EllipsizeMode.END)
 
-        # Details line
-        details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        security_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        security_label.add_css_class("caption")
-        security_label.set_opacity(0.7)
-
-        channel_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        channel_label.add_css_class("caption")
-        channel_label.set_opacity(0.7)
-
-        details_box.append(security_label)
-        details_box.append(channel_label)
-
         info_box.append(header_box)
         info_box.append(bssid_label)
-        info_box.append(details_box)
 
-        # Signal strength percentage
+        # Signal strength and details
         signal_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         signal_box.set_valign(Gtk.Align.CENTER)
 
@@ -195,7 +183,23 @@ class WirelessNetworksWindow(PickerWindow):
         signal_label.add_css_class("caption")
         signal_label.set_width_chars(6)
 
+        # Details line (security and channel)
+        details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        details_box.set_halign(Gtk.Align.END)
+
+        security_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
+        security_label.add_css_class("caption")
+        security_label.set_opacity(0.7)
+
+        channel_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
+        channel_label.add_css_class("caption")
+        channel_label.set_opacity(0.7)
+
+        details_box.append(security_label)
+        details_box.append(channel_label)
+
         signal_box.append(signal_label)
+        signal_box.append(details_box)
 
         main_box.append(signal_icon)
         main_box.append(info_box)
@@ -227,24 +231,27 @@ class WirelessNetworksWindow(PickerWindow):
             return
 
         bssid_label = header_box.get_next_sibling()
-        details_box = bssid_label.get_next_sibling() if bssid_label else None
 
         # Get header box children
         ssid_label = header_box.get_first_child()
         security_icon = ssid_label.get_next_sibling() if ssid_label else None
 
-        # Get details box children
-        if details_box:
-            security_label = details_box.get_first_child()
-            channel_label = (
-                security_label.get_next_sibling() if security_label else None
-            )
+        # Get signal box children
+        if signal_box:
+            signal_label = signal_box.get_first_child()
+            details_box = signal_label.get_next_sibling() if signal_label else None
+
+            # Get details box children (security and channel)
+            if details_box:
+                security_label = details_box.get_first_child()
+                channel_label = security_label.get_next_sibling() if security_label else None
+            else:
+                security_label = None
+                channel_label = None
         else:
+            signal_label = None
             security_label = None
             channel_label = None
-
-        # Get signal box children
-        signal_label = signal_box.get_first_child() if signal_box else None
 
         # Bind data
         if ssid_label:
