@@ -159,12 +159,7 @@ class WirelessNetworksWindow(PickerWindow):
         ssid_label.add_css_class("heading")
         ssid_label.set_hexpand(True)  # Make SSID label expand to fill space
 
-        security_icon = Gtk.Image()
-        security_icon.set_pixel_size(14)
-        security_icon.set_halign(Gtk.Align.END)  # Align security icon to the right
-
         header_box.append(ssid_label)
-        header_box.append(security_icon)
 
         # BSSID line
         bssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
@@ -173,9 +168,7 @@ class WirelessNetworksWindow(PickerWindow):
         bssid_label.set_ellipsize(Pango.EllipsizeMode.END)
 
         info_box.append(header_box)
-        info_box.append(bssid_label)
-
-        # Signal strength and details
+        info_box.append(bssid_label)        # Signal strength and details
         signal_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         signal_box.set_valign(Gtk.Align.CENTER)
 
@@ -230,13 +223,8 @@ class WirelessNetworksWindow(PickerWindow):
         if not header_box:
             return
 
-        bssid_label = header_box.get_next_sibling()
-
-        # Get header box children
-        ssid_label = header_box.get_first_child()
-        security_icon = ssid_label.get_next_sibling() if ssid_label else None
-
-        # Get signal box children
+        bssid_label = header_box.get_next_sibling()        # Get header box children
+        ssid_label = header_box.get_first_child()        # Get signal box children
         if signal_box:
             signal_label = signal_box.get_first_child()
             details_box = signal_label.get_next_sibling() if signal_label else None
@@ -273,10 +261,6 @@ class WirelessNetworksWindow(PickerWindow):
         # Signal icon
         if signal_icon:
             signal_icon.set_from_icon_name(item.get_signal_icon())
-
-        # Security icon
-        if security_icon:
-            security_icon.set_from_icon_name(item.get_security_icon())
 
         # Security text
         if security_label:
