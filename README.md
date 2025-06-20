@@ -64,6 +64,12 @@ A window manager interface for niri with search, focus, and close functionality.
 
 ![Windows](apps/windows/screenshot.png)
 
+### Wireless Networks
+
+A modern WiFi network manager with connection management, signal strength indicators, and network security information.
+
+![Wireless Networks](apps/wireless-networks/screenshot.png)
+
 ### Utilities
 
 - **md2html**: A markdown to HTML converter with support for GFM, wiki-links, and syntax highlighting. Used by Chat and Notes.
@@ -81,6 +87,7 @@ nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#bookmarks
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#notes
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#launcher
 nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#chat
+nix run https://github.com/knoopx/vibeapps/archive/refs/heads/main.zip#wireless-networks
 ```
 
 ## Option 2: Home Manager Module
@@ -128,6 +135,7 @@ In your `flake.nix`:
     launcher.enable = true;
     music.enable = true;
     scratchpad.enable = true;
+    wireless-networks.enable = true;
 
     # Or enable all programs at once
     # enableAll = true;
@@ -149,6 +157,7 @@ The following programs can be enabled individually:
 - `scratchpad` - Interactive mathematical calculator
 - `webkit-shell` - Minimal web browser for wrapping web applications
 - `windows` - Window manager for niri with focus/close actions
+- `wireless-networks` - WiFi network manager with connection and security management
 
 - `md2html` - Advanced markdown to HTML converter
 - `raise-or-open-url` - Smart URL/window management
@@ -168,6 +177,7 @@ Complete example configuration:
     chat.enable = true;
     nix-packages.enable = true;
     windows.enable = true;
+    wireless-networks.enable = true;
   };
 }
 ```

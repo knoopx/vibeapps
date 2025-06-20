@@ -20,6 +20,7 @@
       process-manager = pkgs.callPackage ./apps/process-manager/process-manager.nix {};
       webkit-shell = pkgs.callPackage ./apps/webkit-shell/webkit-shell.nix {};
       windows = pkgs.callPackage ./apps/windows/windows.nix {};
+      wireless-networks = pkgs.callPackage ./apps/wireless-networks/wireless-networks.nix {};
       nix-packages = pkgs.callPackage ./apps/nix-packages/nix-packages.nix {};
       scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
 
