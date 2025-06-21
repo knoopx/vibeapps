@@ -3,7 +3,7 @@
   lib,
   ...
 }: let
-  pkg = pkgs.python3Packages.buildPythonApplication {
+  pkg = pkgs.python312Packages.buildPythonApplication {
     name = "scratchpad";
     src = ./.;
     pyproject = false;

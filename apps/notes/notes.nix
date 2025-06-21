@@ -5,7 +5,7 @@
 }: let
   md2html = pkgs.callPackage ../../utils/md2html/md2html.nix {};
 
-  pkg = pkgs.python3Packages.buildPythonApplication {
+  pkg = pkgs.python312Packages.buildPythonApplication {
     name = "notes";
     src = pkgs.runCommand "notes-src" {} ''
       mkdir -p $out

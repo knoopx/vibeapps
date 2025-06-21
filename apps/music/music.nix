@@ -3,7 +3,7 @@
   lib,
   ...
 }: let
-  pkg = pkgs.python3Packages.buildPythonApplication {
+  pkg = pkgs.python312Packages.buildPythonApplication {
     name = "music";
     src = ./.;
     pyproject = false;
@@ -26,7 +26,7 @@
         gst-plugins-ugly
       ]);
 
-    propagatedBuildInputs = with pkgs.python3Packages; [
+    propagatedBuildInputs = with pkgs.python312Packages; [
       pygobject3
       orjson
     ];

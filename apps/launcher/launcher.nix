@@ -1,5 +1,5 @@
 {pkgs, ...}:
-pkgs.python3Packages.buildPythonApplication {
+pkgs.python312Packages.buildPythonApplication {
   name = "launcher";
   src = ./.;
   pyproject = false;

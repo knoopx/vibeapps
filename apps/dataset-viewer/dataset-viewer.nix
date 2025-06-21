@@ -3,7 +3,7 @@
   lib,
   ...
 }:
-pkgs.python3Packages.buildPythonApplication {
+pkgs.python312Packages.buildPythonApplication {
   name = "dataset-viewer";
   src = ./.;
   pyproject = false;

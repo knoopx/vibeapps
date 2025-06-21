@@ -3,7 +3,7 @@
   lib,
   ...
 }: let
-  pkg = pkgs.python3Packages.buildPythonApplication {
+  pkg = pkgs.python312Packages.buildPythonApplication {
     name = "bookmarks";
     src = ./.;
     pyproject = false;
@@ -19,7 +19,7 @@
       glib-networking
     ];
 
-    propagatedBuildInputs = with pkgs.python3Packages; [
+    propagatedBuildInputs = with pkgs.python312Packages; [
       pygobject3
     ];
 

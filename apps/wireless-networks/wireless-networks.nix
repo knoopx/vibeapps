@@ -3,7 +3,7 @@
   lib,
   ...
 }: let
-  pkg = pkgs.python3Packages.buildPythonApplication {
+  pkg = pkgs.python312Packages.buildPythonApplication {
     name = "wireless-networks";
     src = ./.;
     pyproject = false;
@@ -17,7 +17,7 @@
       libadwaita
     ];
 
-    propagatedBuildInputs = with pkgs.python3Packages; [
+    propagatedBuildInputs = with pkgs.python312Packages; [
       pygobject3
     ];
 
