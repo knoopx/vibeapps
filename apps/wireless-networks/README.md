@@ -275,35 +275,9 @@ SORT_BY_NAME = False
 - **Security Assessment**: Review network security configurations
 - **Performance Testing**: Monitor network performance and quality
 
-## Integration
 
-### Desktop Integration
-
-#### System Integration
-- **Network Indicator**: Integrates with system network indicators
-- **Notification System**: Uses desktop notifications for status updates
-- **Credential Storage**: Integrates with system credential management
-- **Theme Support**: Follows system theme and appearance settings
-
-#### .desktop File Example
-```ini
-[Desktop Entry]
-Name=Wireless Networks
-Comment=Manage WiFi connections
-Exec=wireless-networks
-Icon=network-wireless-symbolic
-Type=Application
-Categories=Network;System;Settings;
-Keywords=wifi;wireless;network;connection;
-```
-
-### Command Line Integration
-
-#### Manual Commands
+### Manual Commands
 ```bash
-# Launch application
-wireless-networks
-
 # Background scanning
 nmcli device wifi list --rescan yes
 

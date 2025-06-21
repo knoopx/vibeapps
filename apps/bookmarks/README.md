@@ -238,23 +238,6 @@ profile_paths = [
 
 ## Integration
 
-### Desktop Integration
-
-#### .desktop File Example
-
-```ini
-[Desktop Entry]
-Name=Bookmarks
-Comment=Browse Firefox bookmarks
-Exec=bookmarks
-Icon=web-browser-symbolic
-Type=Application
-Categories=Network;WebBrowser;Utility;
-Keywords=bookmark;firefox;browser;favorites;
-```
-
-### Browser Integration
-
 - **Default Browser**: Opens bookmarks in system default browser
 - **URL Handling**: Proper URL protocol handling
 - **External Links**: Seamless external link management
