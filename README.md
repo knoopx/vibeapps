@@ -177,6 +177,7 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 - OTP app that uses pickerwindow and displays a lists of sites and their OTP codes using pyotp.
 - Passwords app (libsecret)
 - Diffusers app
+- Browser History
 - Events app
   - uses evolution-data-server
   - Search also parses time and appies filters
