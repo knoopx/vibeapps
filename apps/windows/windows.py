@@ -1,23 +1,23 @@
-#!/usr/bin/env python3
 import gi
 import json
 import subprocess
 import sys
 from typing import Optional, List
 
-gi.require_version('Gtk', '4.0')
-gi.require_version('Adw', '1')
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Gio, Pango
 from picker_window import PickerWindow, PickerItem
 
-APP_ID = 'net.knoopx.windows'
+APP_ID = "net.knoopx.windows"
+
 
 class WindowItem(PickerItem):
-    __gtype_name__ = 'WindowItem'
+    __gtype_name__ = "WindowItem"
 
     window_id = GObject.Property(type=int, default=0)
-    title = GObject.Property(type=str, default='')
-    app_id = GObject.Property(type=str, default='')
+    title = GObject.Property(type=str, default="")
+    app_id = GObject.Property(type=str, default="")
     pid = GObject.Property(type=int, default=0)
     workspace_id = GObject.Property(type=int, default=0)
     is_focused = GObject.Property(type=bool, default=False)
@@ -26,14 +26,14 @@ class WindowItem(PickerItem):
 
     def __init__(self, window_data: dict):
         super().__init__()
-        self.window_id = window_data.get('id', 0)
-        self.title = window_data.get('title', '')
-        self.app_id = window_data.get('app_id', '')
-        self.pid = window_data.get('pid', 0)
-        self.workspace_id = window_data.get('workspace_id', 0)
-        self.is_focused = window_data.get('is_focused', False)
-        self.is_floating = window_data.get('is_floating', False)
-        self.is_urgent = window_data.get('is_urgent', False)
+        self.window_id = window_data.get("id", 0)
+        self.title = window_data.get("title", "")
+        self.app_id = window_data.get("app_id", "")
+        self.pid = window_data.get("pid", 0)
+        self.workspace_id = window_data.get("workspace_id", 0)
+        self.is_focused = window_data.get("is_focused", False)
+        self.is_floating = window_data.get("is_floating", False)
+        self.is_urgent = window_data.get("is_urgent", False)
 
     def get_display_title(self):
         """Get a display-friendly title"""
@@ -62,9 +62,9 @@ class WindowsWindow(PickerWindow):
         self._current_windows = []
         self._filtered_windows = []
         super().__init__(
-            title='Windows',
-            search_placeholder='Search windows by title, app, or workspace...',
-            **kwargs
+            title="Windows",
+            search_placeholder="Search windows by title, app, or workspace...",
+            **kwargs,
         )
 
     def get_item_type(self):
@@ -81,11 +81,13 @@ class WindowsWindow(PickerWindow):
         query_lower = query.lower()
         filtered = []
         for window in self._current_windows:
-            if (query_lower in window.title.lower() or
-                query_lower in window.app_id.lower() or
-                query_lower in str(window.window_id) or
-                query_lower in str(window.workspace_id) or
-                query_lower in str(window.pid)):
+            if (
+                query_lower in window.title.lower()
+                or query_lower in window.app_id.lower()
+                or query_lower in str(window.window_id)
+                or query_lower in str(window.workspace_id)
+                or query_lower in str(window.pid)
+            ):
                 filtered.append(window)
 
         self._filtered_windows = filtered
@@ -101,22 +103,20 @@ class WindowsWindow(PickerWindow):
 
         # Focus the selected window using niri msg
         try:
-            subprocess.run([
-                'niri', 'msg', 'action', 'focus-window',
-                '--id', str(item.window_id)
-            ], check=True)
+            subprocess.run(
+                ["niri", "msg", "action", "focus-window", "--id", str(item.window_id)],
+                check=True,
+            )
             # Close the picker after focusing
             self.close()
         except subprocess.CalledProcessError as e:
             print(f"Error focusing window {item.window_id}: {e}")
             # Show error dialog
             dialog = Adw.MessageDialog.new(
-                self,
-                'Error Focusing Window',
-                f'Failed to focus window: {e}'
+                self, "Error Focusing Window", f"Failed to focus window: {e}"
             )
-            dialog.add_response('close', 'Close')
-            dialog.set_default_response('close')
+            dialog.add_response("close", "Close")
+            dialog.set_default_response("close")
             dialog.present()
 
     def setup_list_item(self, list_item):
@@ -126,11 +126,11 @@ class WindowsWindow(PickerWindow):
             margin_top=8,
             margin_bottom=8,
             margin_start=12,
-            margin_end=12
+            margin_end=12,
         )
 
         # Window icon (placeholder)
-        icon = Gtk.Image.new_from_icon_name('application-x-executable')
+        icon = Gtk.Image.new_from_icon_name("application-x-executable")
         icon.set_icon_size(Gtk.IconSize.LARGE)
         icon.set_valign(Gtk.Align.CENTER)
 
@@ -143,18 +143,18 @@ class WindowsWindow(PickerWindow):
 
         title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         title_label.set_ellipsize(Pango.EllipsizeMode.END)
-        title_label.add_css_class('heading')
+        title_label.add_css_class("heading")
 
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
 
         urgent_badge = Gtk.Label()
-        urgent_badge.add_css_class('caption')
-        urgent_badge.add_css_class('error')
+        urgent_badge.add_css_class("caption")
+        urgent_badge.add_css_class("error")
         urgent_badge.set_visible(False)
 
         floating_badge = Gtk.Label()
-        floating_badge.add_css_class('caption')
-        floating_badge.add_css_class('warning')
+        floating_badge.add_css_class("caption")
+        floating_badge.add_css_class("warning")
         floating_badge.set_visible(False)
 
         status_box.append(urgent_badge)
@@ -166,22 +166,22 @@ class WindowsWindow(PickerWindow):
         # App info row
         app_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
         app_label.set_ellipsize(Pango.EllipsizeMode.END)
-        app_label.add_css_class('caption')
+        app_label.add_css_class("caption")
         app_label.set_opacity(0.7)
 
         # Window details row
         details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
         id_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        id_label.add_css_class('caption')
+        id_label.add_css_class("caption")
         id_label.set_opacity(0.7)
 
         workspace_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        workspace_label.add_css_class('caption')
+        workspace_label.add_css_class("caption")
         workspace_label.set_opacity(0.7)
 
         pid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        pid_label.add_css_class('caption')
+        pid_label.add_css_class("caption")
         pid_label.set_opacity(0.7)
 
         details_box.append(id_label)
@@ -244,38 +244,38 @@ class WindowsWindow(PickerWindow):
     def _get_icon_for_app(self, app_id: str) -> str:
         """Get appropriate icon for app_id"""
         icon_mapping = {
-            'org.gnome.Nautilus': 'folder',
-            'code': 'com.visualstudio.code',
-            'firefox': 'firefox',
-            'org.gnome.Terminal': 'utilities-terminal',
-            'org.gnome.gedit': 'accessories-text-editor',
-            'org.gnome.Calculator': 'accessories-calculator',
-            'org.gnome.Settings': 'preferences-system',
+            "org.gnome.Nautilus": "folder",
+            "code": "com.visualstudio.code",
+            "firefox": "firefox",
+            "org.gnome.Terminal": "utilities-terminal",
+            "org.gnome.gedit": "accessories-text-editor",
+            "org.gnome.Calculator": "accessories-calculator",
+            "org.gnome.Settings": "preferences-system",
         }
 
-        return icon_mapping.get(app_id, 'application-x-executable')
+        return icon_mapping.get(app_id, "application-x-executable")
 
     def get_empty_icon(self):
-        return 'view-grid-symbolic'
+        return "view-grid-symbolic"
 
     def get_loading_icon(self):
-        return 'view-refresh-symbolic'
+        return "view-refresh-symbolic"
 
     def get_empty_title(self):
-        return 'No Windows Found'
+        return "No Windows Found"
 
     def get_empty_description(self):
-        return 'No windows are currently open.'
+        return "No windows are currently open."
 
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item or item.window_id == 0:
             return None
 
         menu_model = Gio.Menu.new()
-        menu_model.append('Focus Window', 'context.on_focus_window_action')
-        menu_model.append('Close Window', 'context.on_close_window_action')
-        menu_model.append('Copy Window ID', 'context.on_copy_window_id_action')
-        menu_model.append('Copy Title', 'context.on_copy_title_action')
+        menu_model.append("Focus Window", "context.on_focus_window_action")
+        menu_model.append("Close Window", "context.on_close_window_action")
+        menu_model.append("Copy Window ID", "context.on_copy_window_id_action")
+        menu_model.append("Copy Title", "context.on_copy_title_action")
         return menu_model
 
     def on_focus_window_action(self, action, param):
@@ -289,10 +289,17 @@ class WindowsWindow(PickerWindow):
             return
 
         try:
-            subprocess.run([
-                'niri', 'msg', 'action', 'close-window',
-                '--id', str(selected_item.window_id)
-            ], check=True)
+            subprocess.run(
+                [
+                    "niri",
+                    "msg",
+                    "action",
+                    "close-window",
+                    "--id",
+                    str(selected_item.window_id),
+                ],
+                check=True,
+            )
             # Refresh the list after closing
             self._refresh_windows()
         except subprocess.CalledProcessError as e:
@@ -313,9 +320,12 @@ class WindowsWindow(PickerWindow):
     def _refresh_windows(self):
         """Refresh the windows list using niri msg"""
         try:
-            result = subprocess.run([
-                'niri', 'msg', '--json', 'windows'
-            ], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ["niri", "msg", "--json", "windows"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
             windows_data = json.loads(result.stdout)
             windows = []
@@ -355,7 +365,9 @@ class WindowsWindow(PickerWindow):
         """Update the UI with filtered windows"""
         if not self._filtered_windows:
             self.remove_all_items()
-            self._show_empty('No Windows Found', 'No windows match your search criteria.')
+            self._show_empty(
+                "No Windows Found", "No windows match your search criteria."
+            )
             return
 
         # Get currently selected window ID to restore selection
@@ -410,5 +422,5 @@ def main():
     return app.run(sys.argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

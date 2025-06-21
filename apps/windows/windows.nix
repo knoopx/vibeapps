@@ -17,6 +17,10 @@ pkgs.python312Packages.buildPythonApplication {
     libadwaita
   ];
 
+  propagatedBuildInputs = with pkgs.python312Packages; [
+    pygobject3
+  ];
+
   desktopItems = [
     (pkgs.makeDesktopItem {
       name = "windows";
@@ -26,21 +30,27 @@ pkgs.python312Packages.buildPythonApplication {
     })
   ];
 
-  buildPhase = ''
-    mkdir -p $out/bin $out/lib/python $out/share/pixmaps
-    cp windows.py $out/bin/windows
-    cp ${../picker_window.py} $out/lib/python/picker_window.py
-    cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
-    cp $src/icon.png $out/share/pixmaps/net.knoopx.windows.png
-    chmod +x $out/bin/windows
-  '';
+  installPhase = ''
+    runHook preInstall
 
-  preFixup = ''
-    gappsWrapperArgs+=(
-      --prefix PYTHONPATH : "$out/lib/python:${pkgs.python312.withPackages (p: [
-      p.pygobject3
-    ])}/${pkgs.python312.sitePackages}"
-    )
+    mkdir -p $out/bin $out/share/net.knoopx.windows $out/share/pixmaps
+
+    cp ${../picker_window.py} $out/share/net.knoopx.windows/picker_window.py
+    cp ${../context_menu_window.py} $out/share/net.knoopx.windows/context_menu_window.py
+    cp windows.py $out/share/net.knoopx.windows/windows.py
+
+    # Create launcher wrapper script
+    cat > $out/bin/windows << EOF
+    #!/bin/sh
+    export PYTHONPATH="$out/share/net.knoopx.windows:\$PYTHONPATH"
+    exec ${pkgs.python312.withPackages (p: [p.pygobject3])}/bin/python $out/share/net.knoopx.windows/windows.py "\$@"
+    EOF
+    chmod +x $out/bin/windows
+
+    # Install icon
+    cp icon.png $out/share/pixmaps/net.knoopx.windows.png
+
+    runHook postInstall
   '';
 
   meta.mainProgram = "windows";
