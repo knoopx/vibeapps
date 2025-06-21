@@ -1,11 +1,7 @@
-{
-  pkgs,
-  lib,
-  ...
-}: let
+{pkgs, ...}: let
   md2html = pkgs.callPackage ../../utils/md2html/md2html.nix {};
-
-  pkg = pkgs.python312Packages.buildPythonApplication {
+in
+  pkgs.python312Packages.buildPythonApplication {
     name = "chat";
     src = ./.;
     pyproject = false;
@@ -22,6 +18,15 @@
       glib-networking
     ];
 
+    desktopItems = [
+      (pkgs.makeDesktopItem {
+        name = "chat";
+        desktopName = "Chat";
+        exec = "chat";
+        icon = "net.knoopx.chat";
+      })
+    ];
+
     preFixup = ''
       gappsWrapperArgs+=(--prefix PATH : "${md2html}/bin" --prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
         p.pygobject3
@@ -36,17 +41,4 @@
     '';
 
     meta.mainProgram = "chat";
-  };
-in
-  pkgs.symlinkJoin {
-    name = "chat";
-    paths = [
-      pkg
-      (pkgs.makeDesktopItem {
-        name = "chat";
-        desktopName = "Chat";
-        exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/net.knoopx.chat.png";
-      })
-    ];
   }

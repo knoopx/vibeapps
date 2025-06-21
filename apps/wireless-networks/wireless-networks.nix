@@ -1,55 +1,47 @@
-{
-  pkgs,
-  lib,
-  ...
-}: let
-  pkg = pkgs.python312Packages.buildPythonApplication {
-    name = "wireless-networks";
-    src = ./.;
-    pyproject = false;
+{pkgs, ...}:
+pkgs.python312Packages.buildPythonApplication {
+  name = "wireless-networks";
+  src = ./.;
+  pyproject = false;
 
-    nativeBuildInputs = with pkgs; [
-      wrapGAppsHook4
-      gobject-introspection
-    ];
+  nativeBuildInputs = with pkgs; [
+    wrapGAppsHook4
+    gobject-introspection
+  ];
 
-    buildInputs = with pkgs; [
-      libadwaita
-    ];
+  buildInputs = with pkgs; [
+    libadwaita
+  ];
 
-    propagatedBuildInputs = with pkgs.python312Packages; [
-      pygobject3
-    ];
+  propagatedBuildInputs = with pkgs.python312Packages; [
+    pygobject3
+  ];
 
-    installPhase = ''
-      runHook preInstall
+  desktopItems = [
+    (pkgs.makeDesktopItem {
+      name = "wireless-networks";
+      desktopName = "Wireless Networks";
+      exec = "wireless-networks";
+      icon = "net.knoopx.wireless";
+    })
+  ];
 
-      mkdir -p $out/bin $out/${pkgs.python312.sitePackages}/ $out/share/pixmaps/
+  installPhase = ''
+    runHook preInstall
 
-      cp *.py $out/${pkgs.python312.sitePackages}/
-      cp ${../picker_window.py} $out/${pkgs.python312.sitePackages}/picker_window.py
-      cp ${../context_menu_window.py} $out/${pkgs.python312.sitePackages}/context_menu_window.py
+    mkdir -p $out/bin $out/${pkgs.python312.sitePackages}/ $out/share/pixmaps/
 
-      cp $src/wireless-networks.py $out/bin/wireless-networks
-      chmod +x $out/bin/wireless-networks
+    cp *.py $out/${pkgs.python312.sitePackages}/
+    cp ${../picker_window.py} $out/${pkgs.python312.sitePackages}/picker_window.py
+    cp ${../context_menu_window.py} $out/${pkgs.python312.sitePackages}/context_menu_window.py
 
-      cp $src/icon.png $out/share/pixmaps/net.knoopx.wireless.png
+    cp $src/wireless-networks.py $out/bin/wireless-networks
+    chmod +x $out/bin/wireless-networks
 
-      runHook postInstall
-    '';
+    cp $src/icon.png $out/share/pixmaps/net.knoopx.wireless.png
 
-    meta.mainProgram = "wireless-networks";
-  };
-in
-  pkgs.symlinkJoin {
-    name = "wireless-networks";
-    paths = [
-      pkg
-      (pkgs.makeDesktopItem {
-        name = "wireless-networks";
-        desktopName = "Wireless Networks";
-        exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/net.knoopx.wireless.png";
-      })
-    ];
-  }
+    runHook postInstall
+  '';
+
+  meta.mainProgram = "wireless-networks";
+}

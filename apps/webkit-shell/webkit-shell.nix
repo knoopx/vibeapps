@@ -1,49 +1,41 @@
-{
-  pkgs,
-  lib,
-  ...
-}: let
-  pkg = pkgs.python312Packages.buildPythonApplication {
-    name = "webkit-shell";
-    src = ./.;
-    pyproject = false;
+{pkgs, ...}:
+pkgs.python312Packages.buildPythonApplication {
+  name = "webkit-shell";
+  src = ./.;
+  pyproject = false;
 
-    nativeBuildInputs = with pkgs; [
-      wrapGAppsHook4
-      gobject-introspection
-    ];
+  nativeBuildInputs = with pkgs; [
+    wrapGAppsHook4
+    gobject-introspection
+  ];
 
-    buildInputs = with pkgs; [
-      libadwaita
-      gtksourceview5
-      webkitgtk_6_0
-      glib-networking
-    ];
+  buildInputs = with pkgs; [
+    libadwaita
+    gtksourceview5
+    webkitgtk_6_0
+    glib-networking
+  ];
 
-    preFixup = ''
-      gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
-        p.pygobject3
-      ])}/${pkgs.python312.sitePackages}")
-    '';
+  desktopItems = [
+    (pkgs.makeDesktopItem {
+      name = "webkit-shell";
+      desktopName = "WebKit Shell";
+      exec = "webkit-shell";
+      icon = "net.knoopx.webkit-shell";
+    })
+  ];
 
-    buildPhase = ''
-      mkdir -p $out/bin $out/share/pixmaps
-      install -m 755 -D webkit-shell.py $out/bin/webkit-shell
-      cp icon.png $out/share/pixmaps/net.knoopx.webkit-shell.png
-    '';
+  preFixup = ''
+    gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
+      p.pygobject3
+    ])}/${pkgs.python312.sitePackages}")
+  '';
 
-    meta.mainProgram = "webkit-shell";
-  };
-in
-  pkgs.symlinkJoin {
-    name = "webkit-shell";
-    paths = [
-      pkg
-      (pkgs.makeDesktopItem {
-        name = "webkit-shell";
-        desktopName = "WebKit Shell";
-        exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/net.knoopx.webkit-shell.png";
-      })
-    ];
-  }
+  buildPhase = ''
+    mkdir -p $out/bin $out/share/pixmaps
+    install -m 755 -D webkit-shell.py $out/bin/webkit-shell
+    cp icon.png $out/share/pixmaps/net.knoopx.webkit-shell.png
+  '';
+
+  meta.mainProgram = "webkit-shell";
+}

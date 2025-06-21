@@ -1,11 +1,7 @@
-{
-  pkgs,
-  lib,
-  ...
-}: let
+{pkgs, ...}: let
   md2html = pkgs.callPackage ../../utils/md2html/md2html.nix {};
-
-  pkg = pkgs.python312Packages.buildPythonApplication {
+in
+  pkgs.python312Packages.buildPythonApplication {
     name = "notes";
     src = pkgs.runCommand "notes-src" {} ''
       mkdir -p $out
@@ -26,6 +22,15 @@
       gtksourceview5
       webkitgtk_6_0
       glib-networking
+    ];
+
+    desktopItems = [
+      (pkgs.makeDesktopItem {
+        name = "notes";
+        desktopName = "Notes";
+        exec = "notes";
+        icon = "net.knoopx.notes";
+      })
     ];
 
     buildPhase = ''
@@ -50,17 +55,4 @@
     '';
 
     meta.mainProgram = "notes";
-  };
-in
-  pkgs.symlinkJoin {
-    name = "notes";
-    paths = [
-      pkg
-      (pkgs.makeDesktopItem {
-        name = "notes";
-        desktopName = "Notes";
-        exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/net.knoopx.notes.png";
-      })
-    ];
   }

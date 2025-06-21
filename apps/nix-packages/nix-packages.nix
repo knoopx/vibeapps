@@ -1,52 +1,44 @@
-{
-  pkgs,
-  lib,
-  ...
-}: let
-  pkg = pkgs.python312Packages.buildPythonApplication {
-    name = "nix-packages";
-    src = ./.;
-    pyproject = false;
+{pkgs, ...}:
+pkgs.python312Packages.buildPythonApplication {
+  name = "nix-packages";
+  src = ./.;
+  pyproject = false;
 
-    nativeBuildInputs = with pkgs; [
-      wrapGAppsHook4
-      gobject-introspection
-    ];
+  nativeBuildInputs = with pkgs; [
+    wrapGAppsHook4
+    gobject-introspection
+  ];
 
-    buildInputs = with pkgs; [
-      libadwaita
-    ];
+  buildInputs = with pkgs; [
+    libadwaita
+  ];
 
-    buildPhase = ''
-      mkdir -p $out/bin $out/lib/python $out/share/pixmaps
-      cp nix-packages.py $out/bin/nix-packages
-      cp ${../picker_window.py} $out/lib/python/picker_window.py
-      cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
-      cp $src/icon.png $out/share/pixmaps/net.knoopx.nix-packages.png
-      chmod +x $out/bin/nix-packages
-    '';
+  desktopItems = [
+    (pkgs.makeDesktopItem {
+      name = "nix-packages";
+      desktopName = "Nix Packages";
+      exec = "nix-packages";
+      icon = "net.knoopx.nix-packages";
+    })
+  ];
 
-    preFixup = ''
-      gappsWrapperArgs+=(
-        --prefix PYTHONPATH : "$out/lib/python:${pkgs.python312.withPackages (p: [
-        p.pygobject3
-        p.requests
-      ])}/${pkgs.python312.sitePackages}"
-      )
-    '';
+  buildPhase = ''
+    mkdir -p $out/bin $out/lib/python $out/share/pixmaps
+    cp nix-packages.py $out/bin/nix-packages
+    cp ${../picker_window.py} $out/lib/python/picker_window.py
+    cp ${../context_menu_window.py} $out/lib/python/context_menu_window.py
+    cp $src/icon.png $out/share/pixmaps/net.knoopx.nix-packages.png
+    chmod +x $out/bin/nix-packages
+  '';
 
-    meta.mainProgram = "nix-packages";
-  };
-in
-  pkgs.symlinkJoin {
-    name = "nix-packages";
-    paths = [
-      pkg
-      (pkgs.makeDesktopItem {
-        name = "nix-packages";
-        desktopName = "Nix Packages";
-        exec = lib.getExe pkg;
-        icon = "${pkg}/share/pixmaps/net.knoopx.nix-packages.png";
-      })
-    ];
-  }
+  preFixup = ''
+    gappsWrapperArgs+=(
+      --prefix PYTHONPATH : "$out/lib/python:${pkgs.python312.withPackages (p: [
+      p.pygobject3
+      p.requests
+    ])}/${pkgs.python312.sitePackages}"
+    )
+  '';
+
+  meta.mainProgram = "nix-packages";
+}
