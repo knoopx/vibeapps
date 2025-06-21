@@ -1,9 +1,11 @@
-# Enhanced Scratchpad Calculator - User Guide
+# Scratchpad
 
 ## Overview
-The Enhanced Scratchpad Calculator is a powerful mathematical expression evaluator with support for variables, functions, and advanced mathematical operations. Type expressions in the left pane and see results in real-time in the right pane with synchronized scrolling.
+
+A powerful mathematical expression evaluator with support for variables, functions, and advanced mathematical operations. Type expressions in the left pane and see results in real-time in the right pane with synchronized scrolling.
 
 ## Features
+
 - Real-time expression evaluation
 - Variable assignment and persistence
 - Comprehensive mathematical functions
@@ -16,6 +18,7 @@ The Enhanced Scratchpad Calculator is a powerful mathematical expression evaluat
 ## Supported Operations
 
 ### 1. Arithmetic Operations
+
 - **Addition**: `+`
 - **Subtraction**: `-`
 - **Multiplication**: `*`
@@ -24,6 +27,7 @@ The Enhanced Scratchpad Calculator is a powerful mathematical expression evaluat
 - **Modulo**: `%`
 
 Examples:
+
 ```
 5 + 3
 10 - 4
@@ -34,9 +38,11 @@ Examples:
 ```
 
 ### 2. Parentheses for Precedence
+
 Use parentheses to control the order of operations:
 
 Examples:
+
 ```
 (2 + 3) * 4
 2 * (3 + 4)
@@ -44,10 +50,12 @@ Examples:
 ```
 
 ### 3. Mathematical Constants
+
 - **π (pi)**: `pi` = 3.141592653589793
 - **e**: `e` = 2.718281828459045
 
 Examples:
+
 ```
 pi
 e
@@ -58,6 +66,7 @@ pi / 2
 ### 4. Built-in Functions
 
 #### Basic Functions
+
 - **sqrt(x)**: Square root
 - **abs(x)**: Absolute value
 - **round(x)**: Round to nearest integer
@@ -70,6 +79,7 @@ pi / 2
 - **pow(x, y)**: Power function (x^y)
 
 Examples:
+
 ```
 sqrt(16)
 abs(-5)
@@ -82,6 +92,7 @@ pow(2, 8)
 ```
 
 #### Advanced Mathematical Functions
+
 - **factorial(x)**: Factorial of x
 - **gcd(x, y)**: Greatest common divisor
 - **lcm(x, y)**: Least common multiple
@@ -90,6 +101,7 @@ pow(2, 8)
 - **median(x, y, ...)**: Median of values
 
 Examples:
+
 ```
 factorial(5)
 gcd(48, 18)
@@ -98,6 +110,7 @@ log2(256)
 avg(1, 2, 3, 4, 5)
 median(1, 3, 2, 5, 4)
 ```
+
 - **sqrt(x)**: Square root
 - **abs(x)**: Absolute value
 - **round(x)**: Round to nearest integer
@@ -107,6 +120,7 @@ median(1, 3, 2, 5, 4)
 - **max(x, y, ...)**: Maximum value
 
 Examples:
+
 ```
 sqrt(16)
 abs(-5)
@@ -118,11 +132,13 @@ max(2, 7, 4)
 ```
 
 #### Trigonometric Functions (in radians)
+
 - **sin(x)**: Sine
 - **cos(x)**: Cosine
 - **tan(x)**: Tangent
 
 Examples:
+
 ```
 sin(pi/2)
 cos(0)
@@ -131,11 +147,13 @@ sin(pi/6)
 ```
 
 #### Logarithmic Functions
+
 - **log(x)**: Base-10 logarithm
 - **ln(x)**: Natural logarithm (base-e)
 - **log2(x)**: Base-2 logarithm
 
 Examples:
+
 ```
 log(100)
 ln(e)
@@ -145,11 +163,13 @@ ln(10)
 ```
 
 #### Programming Utilities
+
 - **bin(x)**: Binary representation (without 0b prefix)
 - **hex(x)**: Hexadecimal representation (without 0x prefix)
 - **oct(x)**: Octal representation (without 0o prefix)
 
 Examples:
+
 ```
 bin(15)     # Returns: 1111
 hex(255)    # Returns: ff
@@ -159,12 +179,14 @@ oct(64)     # Returns: 100
 ### 5. Built-in Constants
 
 #### Memory Units
+
 - **kb**: 1024 (Kilobyte)
 - **mb**: 1024² (Megabyte)
 - **gb**: 1024³ (Gigabyte)
 - **tb**: 1024⁴ (Terabyte)
 
 Examples:
+
 ```
 5 * gb          # 5 gigabytes in bytes
 512 * mb        # 512 megabytes in bytes
@@ -172,6 +194,7 @@ Examples:
 ```
 
 #### Time Units (in seconds)
+
 - **seconds**: 1
 - **minutes**: 60
 - **hours**: 3600
@@ -180,6 +203,7 @@ Examples:
 - **years**: 31536000
 
 Examples:
+
 ```
 5 * minutes     # 5 minutes in seconds
 2 * hours       # 2 hours in seconds
@@ -187,17 +211,21 @@ Examples:
 ```
 
 ### 6. Variables
+
 Define and use variables in your calculations. Variables persist throughout the session and can be referenced in subsequent expressions.
 
 #### Variable Assignment
+
 ```
 variable_name = expression
 ```
 
 #### Using Variables
+
 Once defined, variables can be used in any expression:
 
 Examples:
+
 ```
 # Define variables
 x = 5
@@ -220,6 +248,7 @@ total = subtotal + tax
 ### 7. Advanced Examples
 
 #### Compound Interest Calculation
+
 ```
 principal = 1000
 rate = 0.05
@@ -229,6 +258,7 @@ interest = amount - principal
 ```
 
 #### Geometry Calculations
+
 ```
 # Circle
 radius = 5
@@ -242,6 +272,7 @@ c = sqrt(a^2 + b^2)
 ```
 
 #### Programming Calculations
+
 ```
 # Binary, hex, octal conversions
 decimal_value = 255
@@ -257,6 +288,7 @@ files_that_fit = storage_capacity / file_size_bytes
 ```
 
 #### Statistical Calculations
+
 ```
 # Dataset analysis
 data_points = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -271,6 +303,7 @@ combinations = factorial(n) / (factorial(r) * factorial(n - r))
 ```
 
 #### Time and Duration Calculations
+
 ```
 # Convert time units
 meeting_duration = 90 * minutes
@@ -290,6 +323,7 @@ The calculator provides descriptive error messages for various scenarios:
 Errors are highlighted in red in the results pane for easy identification.
 
 ## 9. Comments
+
 Lines starting with `#` are treated as comments and are ignored:
 
 ```
@@ -299,6 +333,7 @@ y = x * 2
 ```
 
 ## 10. Tips and Features
+
 1. **Synchronized scrolling**: Input and output panes scroll together
 2. **Empty lines**: Empty lines in the input will show as empty lines in the results
 3. **Real-time updates**: Results update automatically as you type
@@ -309,6 +344,7 @@ y = x * 2
 8. **Integer display**: Results that are whole numbers display without decimal points
 
 ## 11. Limitations
+
 - Variables are reset when the text is completely cleared
 - Uses a restricted evaluation environment for security
 - Only mathematical operations and approved functions are available
