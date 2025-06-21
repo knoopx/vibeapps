@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-import gi
-
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, Gio, Gdk, GLib
 import os
 import json
+import threading
 from pathlib import Path
+
+import gi
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+
+from gi.repository import Gtk, Adw, Gio, Gdk, GLib
 
 
 class AppHistory:
@@ -76,30 +78,42 @@ class AppHistory:
 
 
 class LauncherWindow(Adw.ApplicationWindow):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, launcher_app=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.app_history = AppHistory()
+        self.launcher_app = launcher_app  # Reference to launcher app
+        self.app_history = launcher_app.app_history if launcher_app else AppHistory()
+        self.apps_loaded = False
+
         self.set_default_size(500, 620)
         self.set_title("Applications")
+
+        # Create UI components
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(box)
+
         header = Adw.HeaderBar()
         self.search_entry = Gtk.SearchEntry()
         self.search_entry.set_hexpand(True)
         header.set_title_widget(self.search_entry)
         box.append(header)
+
+        # Add key controller
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self.on_key_press)
         self.search_entry.add_controller(key_controller)
+
+        # Create list box
         self.list_box = Gtk.ListBox()
         self.list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.list_box.set_activate_on_single_click(True)
+
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
         scrolled.set_child(self.list_box)
         self.scrolled = scrolled
         box.append(scrolled)
-        self.load_apps()
+
+        # Connect signals
         self.search_entry.connect("search-changed", self.on_search_changed)
         self.search_entry.connect("activate", self.on_search_activate)
         self.list_box.connect("row-activated", self.on_row_activated)
@@ -107,67 +121,122 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.connect("map", self.on_window_map)
 
     def on_window_map(self, window):
+        # Load UI with pre-loaded apps if available
+        if not self.apps_loaded and self.launcher_app and self.launcher_app.apps:
+            self._populate_apps_from_launcher()
+
         self.search_entry.grab_focus()
         current_text = self.search_entry.get_text()
         if current_text:
             self.search_entry.select_region(0, -1)
             self.on_search_changed(self.search_entry)
         else:
-            current_selected = self.list_box.get_selected_row()
-            if not current_selected or not current_selected.get_visible():
-                first_visible = self.find_next_visible_row(-1, 1)
-                if first_visible:
-                    self.list_box.select_row(first_visible)
-                    self.scroll_to_row(first_visible)
+            self._select_first_visible_row()
+
+    def _populate_apps_from_launcher(self):
+        """Populate UI with apps already loaded by launcher app"""
+        if not self.launcher_app or not self.launcher_app.apps:
+            return
+
+        # Clear existing apps
+        self._clear_list_box()
+
+        # Load apps from launcher app
+        for app_info in self.launcher_app.apps:
+            self._create_row_for_app(app_info)
+
+        self.apps_loaded = True
+
+        # Reapply current search filter if one exists
+        current_search = self.search_entry.get_text()
+        if current_search.strip():
+            self.on_search_changed(self.search_entry)
+        else:
+            self._select_first_visible_row()
+
+        return False  # Don't repeat timeout
+
+    def _select_first_visible_row(self):
+        """Helper to select the first visible row"""
+        first_visible = self.find_next_visible_row(-1, 1)
+        if first_visible:
+            self.list_box.select_row(first_visible)
+            self.scroll_to_row(first_visible)
+
+    def _clear_list_box(self):
+        """Clear all rows from list box"""
+        child = self.list_box.get_first_child()
+        while child:
+            next_child = child.get_next_sibling()
+            self.list_box.remove(child)
+            child = next_child
+
+    def _create_row_for_app(self, app_info):
+        """Create a row for an app"""
+        row = Gtk.ListBoxRow()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.set_margin_start(10)
+        box.set_margin_end(10)
+        box.set_margin_top(5)
+        box.set_margin_bottom(5)
+
+        # Handle icon safely
+        icon_gicon = app_info.get_icon()
+        if icon_gicon:
+            icon = Gtk.Image.new_from_gicon(icon_gicon)
+        else:
+            icon = Gtk.Image.new_from_icon_name("application-x-executable")
+        icon.set_pixel_size(32)
+        box.append(icon)
+
+        label = Gtk.Label(label=app_info.get_name())
+        label.set_halign(Gtk.Align.START)
+        box.append(label)
+
+        row.set_child(box)
+        # Store app_info as a custom property
+        setattr(row, "app_info", app_info)
+
+        self.list_box.append(row)
+        return row
 
     def load_apps(self):
-        self.apps = []
-        unsorted_apps = [
-            app_info for app_info in Gio.AppInfo.get_all() if app_info.should_show()
-        ]
-        sorted_apps = sorted(
-            unsorted_apps,
-            key=lambda app: (
-                -self.app_history.get_total_launch_count(app.get_id()),
-                app.get_name().lower(),
-            ),
-        )
-        for app_info in sorted_apps:
-            self.apps.append(app_info)
-            row = Gtk.ListBoxRow()
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-            box.set_margin_start(10)
-            box.set_margin_end(10)
-            box.set_margin_top(5)
-            box.set_margin_bottom(5)
-            icon = Gtk.Image.new_from_gicon(app_info.get_icon())
-            icon.set_pixel_size(32)
-            box.append(icon)
-            label = Gtk.Label(label=app_info.get_name())
-            label.set_halign(Gtk.Align.START)
-            box.append(label)
-            row.set_child(box)
-            row.app_info = app_info
-            self.list_box.append(row)
+        """Legacy method - now redirects to populate from launcher"""
+        if not self.apps_loaded:
+            self._populate_apps_from_launcher()
 
     def on_search_changed(self, entry):
         search_text = entry.get_text().lower()
         visible_rows = []
-        for row in self.list_box:
-            app_name = row.app_info.get_name().lower()
-            if search_text in app_name:
-                relevance_score = self.app_history.get_search_relevance_score(
-                    row.app_info.get_id(), search_text
-                )
-                visible_rows.append((row, relevance_score))
-                row.set_visible(True)
-            else:
-                row.set_visible(False)
-        visible_rows.sort(key=lambda x: (-x[1], x[0].app_info.get_name().lower()))
-        first_row_to_select = visible_rows[0][0] if visible_rows else None
+
+        # Iterate through all children of the list box
+        child = self.list_box.get_first_child()
+        while child:
+            app_info = getattr(child, "app_info", None)
+            if app_info:
+                app_name = app_info.get_name().lower()
+                if search_text in app_name:
+                    relevance_score = self.app_history.get_search_relevance_score(
+                        app_info.get_id(), search_text
+                    )
+                    visible_rows.append((child, relevance_score))
+                    child.set_visible(True)
+                else:
+                    child.set_visible(False)
+            child = child.get_next_sibling()
+
+        # Sort visible rows by relevance
+        visible_rows.sort(
+            key=lambda x: (-x[1], getattr(x[0], "app_info").get_name().lower())
+        )
+
+        # Reorder rows in list box
         for i, (row, _) in enumerate(visible_rows):
             self.list_box.remove(row)
             self.list_box.insert(row, i)
+
+        # Select first visible row
+        first_row_to_select = visible_rows[0][0] if visible_rows else None
         if first_row_to_select:
             GLib.idle_add(self._select_row_safe, first_row_to_select)
         else:
@@ -205,7 +274,9 @@ class LauncherWindow(Adw.ApplicationWindow):
                 self.list_box.select_row(first_visible)
                 selected = first_visible
         if selected:
-            self.launch_app(selected.app_info, search_term)
+            app_info = getattr(selected, "app_info", None)
+            if app_info:
+                self.launch_app(app_info, search_term)
         return True
 
     def scroll_to_row(self, row):
@@ -260,47 +331,78 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_row_activated(self, list_box, row):
         search_term = self.search_entry.get_text()
-        self.launch_app(row.app_info, search_term)
+        app_info = getattr(row, "app_info", None)
+        if app_info:
+            self.launch_app(app_info, search_term)
 
     def on_close_request(self, window):
+        # Refresh apps when window is closed
+        if self.launcher_app:
+            self.launcher_app.refresh_apps()
         self.set_visible(False)
         return True
 
     def refresh_app_list(self):
-        while True:
-            row = self.list_box.get_first_child()
-            if not row:
-                break
-            self.list_box.remove(row)
-        self.load_apps()
-        first_visible = self.find_next_visible_row(-1, 1)
-        if first_visible:
-            self.list_box.select_row(first_visible)
-            self.scroll_to_row(first_visible)
+        """Refresh the app list by reloading from launcher app"""
+        if self.launcher_app:
+            # Trigger refresh in launcher app
+            self.launcher_app.refresh_apps()
+            # Wait a moment for apps to load, then repopulate UI
+            GLib.timeout_add(100, self._populate_apps_from_launcher)
         self.search_entry.grab_focus()
 
 
 class Launcher(Adw.Application):
-
     def __init__(self):
         super().__init__(
             application_id="net.knoopx.launcher",
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
         )
         self.window = None
+        self.apps = []  # Store apps at application level
+        self.app_history = AppHistory()  # Move app history to application level
 
     def do_startup(self):
         Adw.Application.do_startup(self)
         self.hold()
+        # Load apps on application startup
+        self._load_apps_on_startup()
+
+    def _load_apps_on_startup(self):
+        """Load apps in background during application startup"""
+        def load_apps_worker():
+            unsorted_apps = [
+                app_info for app_info in Gio.AppInfo.get_all() if app_info.should_show()
+            ]
+
+            # Sort by launch count and name
+            sorted_apps = sorted(
+                unsorted_apps,
+                key=lambda app: (
+                    -self.app_history.get_total_launch_count(app.get_id()),
+                    app.get_name().lower(),
+                ),
+            )
+
+            # Store apps at application level
+            self.apps = sorted_apps
+
+        # Load apps in background thread
+        threading.Thread(target=load_apps_worker, daemon=True).start()
 
     def do_activate(self):
+        # Create window only when first activated
         if not self.window:
-            self.window = LauncherWindow(application=self)
+            self.window = LauncherWindow(application=self, launcher_app=self)
+
         if self.window.get_visible():
             self.window.set_visible(False)
         else:
-            self.window.refresh_app_list()
             self.window.present()
+
+    def refresh_apps(self):
+        """Refresh apps when window is closed"""
+        self._load_apps_on_startup()
 
     def do_command_line(self, command_line):
         self.activate()
