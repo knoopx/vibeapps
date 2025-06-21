@@ -152,6 +152,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         if current_search.strip():
             self.on_search_changed(self.search_entry)
         else:
+            # If no search text, trigger sorting by total launches
+            self.on_search_changed(self.search_entry)
             self._select_first_visible_row()
 
         return False  # Don't repeat timeout
@@ -215,17 +217,22 @@ class LauncherWindow(Adw.ApplicationWindow):
             app_info = getattr(child, "app_info", None)
             if app_info:
                 app_name = app_info.get_name().lower()
-                if search_text in app_name:
-                    relevance_score = self.app_history.get_search_relevance_score(
-                        app_info.get_id(), search_text
-                    )
+                if not search_text or search_text in app_name:
+                    if search_text:
+                        # When filtering, use relevance score
+                        relevance_score = self.app_history.get_search_relevance_score(
+                            app_info.get_id(), search_text
+                        )
+                    else:
+                        # When no filter, use total launch count
+                        relevance_score = self.app_history.get_total_launch_count(app_info.get_id())
                     visible_rows.append((child, relevance_score))
                     child.set_visible(True)
                 else:
                     child.set_visible(False)
             child = child.get_next_sibling()
 
-        # Sort visible rows by relevance
+        # Sort visible rows by relevance/launch count
         visible_rows.sort(
             key=lambda x: (-x[1], getattr(x[0], "app_info").get_name().lower())
         )
