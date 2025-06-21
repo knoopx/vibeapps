@@ -4,76 +4,64 @@ A collection of vibe-coded, keyboard-centric, minimalist GTK4/Adwaita applicatio
 
 ## Applications
 
-### Bookmarks
-
-A fast Firefox bookmarks browser with search functionality and keyboard navigation.
+### [Bookmarks](apps/bookmarks/README.md)
+A fast and intuitive bookmark browser with real-time search, automatic Firefox profile detection, context menu actions, and keyboard navigation.
 
 ![Bookmarks](apps/bookmarks/screenshot.png)
 
-### Chat
-
-A chat interface for OpenAI's API with markdown rendering support and streaming responses.
+### [Chat](apps/chat/README.md)
+An AI-powered chat application using OpenAI's GPT models, with real-time streaming responses, markdown rendering, and conversation history management.
 
 ![Chat](apps/chat/screenshot.png)
 
-### Dataset Viewer (ds)
-
-A simple command-line tool for viewing image/caption datasets pairs.
+### [Dataset Viewer](apps/dataset-viewer/README.md)
+A specialized GTK4 dataset viewer for images and captions, with live caption editing and efficient keyboard navigation.
 
 ![Dataset Viewer](apps/dataset-viewer/screenshot.png)
 
-### Launcher
-
-A minimalist application launcher with search functionality and launch history tracking.
+### [Launcher](apps/launcher/README.md)
+An intelligent GTK4 application launcher with fuzzy search, smart ranking, and adaptive suggestions based on usage patterns.
 
 ![Launcher](apps/launcher/screenshot.png)
 
-### Music
-
-A minimalist music player with library management and queue functionality.
+### [Music](apps/music/README.md)
+A music library manager with intelligent scanning, automatic metadata extraction, custom collections, star ratings, and advanced filtering.
 
 ![Music](apps/music/screenshot.png)
 
-### Notes
-
-A markdown note-taking application with wiki-links support and live preview.
+### [Notes](apps/notes/README.md)
+A markdown note-taking app with live preview, fast fuzzy search, file management, and wiki-links support.
 
 ![Notes](apps/notes/screenshot.png)
 
-### Nix Packages
-
-A simple interface to query and browser nix packages.
+### [Nix Package Search](apps/nix-packages/README.md)
+A modern GTK4 interface for real-time Nix package search with detailed package information and clipboard integration.
 
 ![Nix Packages](apps/nix-packages/screenshot.png)
 
-### Scratchpad Calculator
-
-An interactive scratchpad calculator, similar to Soulver. (Work in Progress)
+### [Scratchpad](apps/scratchpad/README.md)
+An interactive scratchpad calculator with real-time expression evaluation, variable support, error highlighting, and advanced mathematical functions.
 
 ![Scratchpad](apps/scratchpad/screenshot.png)
 
-### WebKit Shell
-
-A minimal web browser shell for wrapping web applications in GTK windows.
+### [WebKit Shell](apps/webkit-shell/README.md)
+A lightweight WebKit-based shell for creating dedicated web app windows, with session persistence, custom window settings, and CLI options.
 
 ![Webkit Shell](apps/webkit-shell/screenshot.png)
 
-### Windows
-
-A window manager interface for niri with search, focus, and close functionality.
+### [Windows](apps/windows/README.md)
+A Niri compositor window management UI with live window listing, advanced search, and window control operations.
 
 ![Windows](apps/windows/screenshot.png)
 
-### Wireless Networks
-
-A modern WiFi network manager with connection management, signal strength indicators, and network security information.
+### [Wireless Networks](apps/wireless-networks/README.md)
+A comprehensive GTK4 WiFi manager with real-time network scanning, connection management, security status display, and detailed network information.
 
 ![Wireless Networks](apps/wireless-networks/screenshot.png)
 
 ### Utilities
-
-- **md2html**: A markdown to HTML converter with support for GFM, wiki-links, and syntax highlighting. Used by Chat and Notes.
-- **raise-or-open-url**: A utility to raise existing windows or open new ones based on URLs (niri, brotab)
+- [md2html](utils/md2html/): A markdown-to-HTML converter with support for GFM, wiki-links, and syntax highlighting.
+- [raise-or-open-url](utils/raise-or-open-url/): A utility to raise existing windows or open URLs using Niri or brotab.
 
 # Installation and Usage
 
