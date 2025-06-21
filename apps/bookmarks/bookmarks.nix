@@ -15,6 +15,8 @@
 
     buildInputs = with pkgs; [
       libadwaita
+      webkitgtk_6_0
+      glib-networking
     ];
 
     propagatedBuildInputs = with pkgs.python3Packages; [
@@ -28,6 +30,7 @@
 
       cp *.py $out/${pkgs.python3.sitePackages}/
       cp ${../picker_window.py} $out/${pkgs.python3.sitePackages}/picker_window.py
+      cp ${../picker_window_with_preview.py} $out/${pkgs.python3.sitePackages}/picker_window_with_preview.py
       cp ${../context_menu_window.py} $out/${pkgs.python3.sitePackages}/context_menu_window.py
 
       cp $src/bookmarks.py $out/bin/bookmarks

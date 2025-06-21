@@ -293,7 +293,6 @@ chmod 644 ~/.mozilla/firefox/[profile]/places.sqlite
 
 ### Planned Features
 
-- **Webpage preview**: display a preview of the bookmark
 - **Multiple Browser Support**: Chrome, Safari bookmark integration
 - **Bookmark Editing**: Add, edit, delete bookmark functionality
 - **Custom Database**: Independent bookmark storage system
