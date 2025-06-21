@@ -23,10 +23,10 @@
     ];
 
     preFixup = ''
-      gappsWrapperArgs+=(--prefix PATH : "${md2html}/bin" --prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
+      gappsWrapperArgs+=(--prefix PATH : "${md2html}/bin" --prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
         p.pygobject3
         p.openai
-      ])}/${pkgs.python3.sitePackages}")
+      ])}/${pkgs.python312.sitePackages}")
     '';
 
     buildPhase = ''

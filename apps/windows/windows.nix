@@ -28,9 +28,9 @@
 
     preFixup = ''
       gappsWrapperArgs+=(
-        --prefix PYTHONPATH : "$out/lib/python:${pkgs.python3.withPackages (p: [
+        --prefix PYTHONPATH : "$out/lib/python:${pkgs.python312.withPackages (p: [
         p.pygobject3
-      ])}/${pkgs.python3.sitePackages}"
+      ])}/${pkgs.python312.sitePackages}"
       )
     '';
 

@@ -14,9 +14,9 @@ pkgs.python312Packages.buildPythonApplication {
   ];
 
   preFixup = ''
-    gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python3.withPackages (p: [
+    gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
       p.pygobject3
-    ])}/${pkgs.python3.sitePackages}")
+    ])}/${pkgs.python312.sitePackages}")
   '';
 
   buildPhase = ''

@@ -26,12 +26,12 @@
     installPhase = ''
       runHook preInstall
 
-      mkdir -p $out/bin $out/${pkgs.python3.sitePackages}/ $out/share/pixmaps/
+      mkdir -p $out/bin $out/${pkgs.python312.sitePackages}/ $out/share/pixmaps/
 
-      cp *.py $out/${pkgs.python3.sitePackages}/
-      cp ${../picker_window.py} $out/${pkgs.python3.sitePackages}/picker_window.py
-      cp ${../picker_window_with_preview.py} $out/${pkgs.python3.sitePackages}/picker_window_with_preview.py
-      cp ${../context_menu_window.py} $out/${pkgs.python3.sitePackages}/context_menu_window.py
+      cp *.py $out/${pkgs.python312.sitePackages}/
+      cp ${../picker_window.py} $out/${pkgs.python312.sitePackages}/picker_window.py
+      cp ${../picker_window_with_preview.py} $out/${pkgs.python312.sitePackages}/picker_window_with_preview.py
+      cp ${../context_menu_window.py} $out/${pkgs.python312.sitePackages}/context_menu_window.py
 
       cp $src/bookmarks.py $out/bin/bookmarks
       chmod +x $out/bin/bookmarks
