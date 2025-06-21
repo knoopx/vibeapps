@@ -1,6 +1,6 @@
 # Vibe Apps
 
-A collection of vibe-coded, keyboard-centric, minimalist GTK4/Adwaita applications built with Python and Nix.
+A collection of fast, keyboard-centric, minimalist GTK4/Adwaita applications built with Python and Nix. Inspired by productivity tools like Raycast, Alfred, and Quicksilver, with a focus on speed and instant app startup.
 
 ## Applications
 
