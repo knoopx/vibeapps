@@ -16,7 +16,7 @@ class AppHistory:
         data_home = os.environ.get(
             "XDG_DATA_HOME", os.path.expanduser("~/.local/share")
         )
-        self.data_file = Path(data_home) / "launcher" / "history.json"
+        self.data_file = Path(data_home) / "net.knoopx.launcher" / "history.json"
         self.term_app_launches = self._load_data()
 
     def _load_data(self):

@@ -59,7 +59,7 @@ A powerful markdown-based note-taking application with real-time preview, advanc
 
 Notes are stored as markdown files in:
 ```
-~/.local/share/notes/
+~/.local/share/net.knoopx.notes/
 ├── note1.md
 ├── project-ideas.md
 ├── meeting-notes.md
@@ -176,7 +176,7 @@ The application uses GSettings for configuration:
 
 #### Notes Directory
 ```bash
-~/.local/share/notes/
+~/.local/share/net.knoopx.notes/
 ```
 
 #### Settings
@@ -225,7 +225,7 @@ Open notes in your preferred editor:
 
 Notes work seamlessly with version control:
 ```bash
-cd ~/.local/share/notes
+cd ~/.local/share/net.knoopx.notes
 git init
 git add .
 git commit -m "Initial notes"

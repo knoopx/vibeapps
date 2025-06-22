@@ -90,7 +90,7 @@ Future "edit" searches will prioritize Visual Studio Code
 
 #### History File Location
 ```
-~/.local/share/launcher/history.json
+~/.local/share/net.knoopx.launcher/history.json
 ```
 
 #### Data Structure
