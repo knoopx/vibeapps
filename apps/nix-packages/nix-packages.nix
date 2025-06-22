@@ -1,5 +1,5 @@
 {pkgs, ...}:
-pkgs.python312Packages.buildPythonApplication {
+pkgs.python313Packages.buildPythonApplication {
   name = "nix-packages";
   src = ./.;
   pyproject = false;
@@ -33,10 +33,10 @@ pkgs.python312Packages.buildPythonApplication {
 
   preFixup = ''
     gappsWrapperArgs+=(
-      --prefix PYTHONPATH : "$out/lib/python:${pkgs.python312.withPackages (p: [
+      --prefix PYTHONPATH : "$out/lib/python:${pkgs.python313.withPackages (p: [
       p.pygobject3
       p.requests
-    ])}/${pkgs.python312.sitePackages}"
+    ])}/${pkgs.python313.sitePackages}"
     )
   '';
 

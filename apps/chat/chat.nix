@@ -1,7 +1,7 @@
 {pkgs, ...}: let
   md2html = pkgs.callPackage ../../utils/md2html/md2html.nix {};
 in
-  pkgs.python312Packages.buildPythonApplication {
+  pkgs.python313Packages.buildPythonApplication {
     name = "chat";
     src = ./.;
     pyproject = false;
@@ -28,10 +28,10 @@ in
     ];
 
     preFixup = ''
-      gappsWrapperArgs+=(--prefix PATH : "${md2html}/bin" --prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
+      gappsWrapperArgs+=(--prefix PATH : "${md2html}/bin" --prefix PYTHONPATH : "${pkgs.python313.withPackages (p: [
         p.pygobject3
         p.openai
-      ])}/${pkgs.python312.sitePackages}")
+      ])}/${pkgs.python313.sitePackages}")
     '';
 
     buildPhase = ''

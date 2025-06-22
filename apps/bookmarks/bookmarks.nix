@@ -1,5 +1,5 @@
 {pkgs, ...}:
-pkgs.python312Packages.buildPythonApplication {
+pkgs.python313Packages.buildPythonApplication {
   name = "bookmarks";
   src = ./.;
   pyproject = false;
@@ -15,7 +15,7 @@ pkgs.python312Packages.buildPythonApplication {
     glib-networking
   ];
 
-  propagatedBuildInputs = with pkgs.python312Packages; [
+  propagatedBuildInputs = with pkgs.python313Packages; [
     pygobject3
   ];
 
@@ -31,12 +31,12 @@ pkgs.python312Packages.buildPythonApplication {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/bin $out/${pkgs.python312.sitePackages}/ $out/share/pixmaps/
+    mkdir -p $out/bin $out/${pkgs.python313.sitePackages}/ $out/share/pixmaps/
 
-    cp *.py $out/${pkgs.python312.sitePackages}/
-    cp ${../picker_window.py} $out/${pkgs.python312.sitePackages}/picker_window.py
-    cp ${../picker_window_with_preview.py} $out/${pkgs.python312.sitePackages}/picker_window_with_preview.py
-    cp ${../context_menu_window.py} $out/${pkgs.python312.sitePackages}/context_menu_window.py
+    cp *.py $out/${pkgs.python313.sitePackages}/
+    cp ${../picker_window.py} $out/${pkgs.python313.sitePackages}/picker_window.py
+    cp ${../picker_window_with_preview.py} $out/${pkgs.python313.sitePackages}/picker_window_with_preview.py
+    cp ${../context_menu_window.py} $out/${pkgs.python313.sitePackages}/context_menu_window.py
 
     cp $src/bookmarks.py $out/bin/bookmarks
     chmod +x $out/bin/bookmarks

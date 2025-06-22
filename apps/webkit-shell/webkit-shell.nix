@@ -1,5 +1,5 @@
 {pkgs, ...}:
-pkgs.python312Packages.buildPythonApplication {
+pkgs.python313Packages.buildPythonApplication {
   name = "webkit-shell";
   src = ./.;
   pyproject = false;
@@ -26,9 +26,9 @@ pkgs.python312Packages.buildPythonApplication {
   ];
 
   preFixup = ''
-    gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python312.withPackages (p: [
+    gappsWrapperArgs+=(--prefix PYTHONPATH : "${pkgs.python313.withPackages (p: [
       p.pygobject3
-    ])}/${pkgs.python312.sitePackages}")
+    ])}/${pkgs.python313.sitePackages}")
   '';
 
   buildPhase = ''

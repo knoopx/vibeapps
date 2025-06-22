@@ -1,5 +1,5 @@
 {pkgs, ...}:
-pkgs.python312Packages.buildPythonApplication {
+pkgs.python313Packages.buildPythonApplication {
   name = "music";
   src = ./.;
   pyproject = false;
@@ -22,7 +22,7 @@ pkgs.python312Packages.buildPythonApplication {
       gst-plugins-ugly
     ]);
 
-  propagatedBuildInputs = with pkgs.python312Packages; [
+  propagatedBuildInputs = with pkgs.python313Packages; [
     pygobject3
     orjson
   ];
@@ -39,17 +39,17 @@ pkgs.python312Packages.buildPythonApplication {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/bin $out/${pkgs.python312.sitePackages} $out/share/glib-2.0/schemas $out/share/pixmaps
+    mkdir -p $out/bin $out/${pkgs.python313.sitePackages} $out/share/glib-2.0/schemas $out/share/pixmaps
 
     # Install local Python modules
-    cp *.py $out/${pkgs.python312.sitePackages}/
+    cp *.py $out/${pkgs.python313.sitePackages}/
 
     # Install shared Python modules from parent directory
-    cp ${../picker_window.py} $out/${pkgs.python312.sitePackages}/picker_window.py
-    cp ${../context_menu_window.py} $out/${pkgs.python312.sitePackages}/context_menu_window.py
-    cp ${../star_button.py} $out/${pkgs.python312.sitePackages}/star_button.py
-    cp ${../circular_progress.py} $out/${pkgs.python312.sitePackages}/circular_progress.py
-    cp ${../badge.py} $out/${pkgs.python312.sitePackages}/badge.py
+    cp ${../picker_window.py} $out/${pkgs.python313.sitePackages}/picker_window.py
+    cp ${../context_menu_window.py} $out/${pkgs.python313.sitePackages}/context_menu_window.py
+    cp ${../star_button.py} $out/${pkgs.python313.sitePackages}/star_button.py
+    cp ${../circular_progress.py} $out/${pkgs.python313.sitePackages}/circular_progress.py
+    cp ${../badge.py} $out/${pkgs.python313.sitePackages}/badge.py
 
     # Install main executable
     cp music.py $out/bin/music

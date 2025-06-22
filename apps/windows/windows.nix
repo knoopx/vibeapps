@@ -3,7 +3,7 @@
   lib,
   ...
 }:
-pkgs.python312Packages.buildPythonApplication {
+pkgs.python313Packages.buildPythonApplication {
   name = "windows";
   src = ./.;
   pyproject = false;
@@ -17,7 +17,7 @@ pkgs.python312Packages.buildPythonApplication {
     libadwaita
   ];
 
-  propagatedBuildInputs = with pkgs.python312Packages; [
+  propagatedBuildInputs = with pkgs.python313Packages; [
     pygobject3
   ];
 
@@ -43,7 +43,7 @@ pkgs.python312Packages.buildPythonApplication {
     cat > $out/bin/windows << EOF
     #!/bin/sh
     export PYTHONPATH="$out/share/net.knoopx.windows:\$PYTHONPATH"
-    exec ${pkgs.python312.withPackages (p: [p.pygobject3])}/bin/python $out/share/net.knoopx.windows/windows.py "\$@"
+    exec ${pkgs.python313.withPackages (p: [p.pygobject3])}/bin/python $out/share/net.knoopx.windows/windows.py "\$@"
     EOF
     chmod +x $out/bin/windows
 
