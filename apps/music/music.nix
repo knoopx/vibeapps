@@ -6,6 +6,7 @@ pkgs.python313Packages.buildPythonApplication {
 
   nativeBuildInputs = with pkgs; [
     wrapGAppsHook4
+    copyDesktopItems
     gobject-introspection
     glib
   ];

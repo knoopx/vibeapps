@@ -13,6 +13,7 @@ in
 
     nativeBuildInputs = with pkgs; [
       wrapGAppsHook4
+      copyDesktopItems
       gobject-introspection
       glib # for glib-compile-schemas
     ];
