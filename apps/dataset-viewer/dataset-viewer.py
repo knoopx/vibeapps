@@ -14,7 +14,6 @@ class ImageCaptionViewer(Adw.ApplicationWindow):
         self.caption_ext = caption_ext
         self.image_files = self._get_image_files()
         self.current_index = 0
-        self.original_pixbuf = None
         self.set_default_size(800, 600)
         self.set_margin_start(0)
         self.set_margin_end(0)

@@ -249,12 +249,6 @@ class MainWindow(Adw.ApplicationWindow):
             else:
                 print(f'Error creating note via repository: {relative_path}')
 
-    def select_row_after_creation(self, row, note_filename_relative):
-        if row:
-            self.note_list.select_row(row)
-            self.on_note_selected(self.note_list, row)
-        return GLib.SOURCE_REMOVE
-
     def on_note_selected(self, listbox, row):
         if row:
             if hasattr(row, 'note_object'):

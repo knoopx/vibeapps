@@ -25,10 +25,6 @@ class Note:
     def display_name(self):
         return os.path.splitext(self.relative_path)[0]
 
-    @property
-    def directory_relative(self):
-        return os.path.dirname(self._relative_path)
-
     def __repr__(self):
         return f"<Note '{self.relative_path}'>"
 

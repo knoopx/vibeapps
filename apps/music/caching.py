@@ -134,7 +134,7 @@ class MusicLibrary:
         new_releases = []
         found_releases = set()
         try:
-            for root, dirs, files in os.walk(self.music_dir, followlinks=True):
+            for root, _, files in os.walk(self.music_dir, followlinks=True):
                 root_path = Path(root)
                 if any((part.startswith(".") for part in root_path.parts)):
                     continue

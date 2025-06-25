@@ -308,11 +308,6 @@ class BookmarksWindow(PickerWindowWithPreview):
         """Get the icon for the empty preview state."""
         return "user-bookmarks-symbolic"
 
-    def on_preview_item_changed(self, item: Optional[BookmarkItem]) -> None:
-        """Called when the preview item changes."""
-        if item:
-            print(f"Previewing bookmark: {item.title}")
-
     def _fetch_bookmarks(self):
         try:
             firefox_home = os.path.expanduser("~/.mozilla/firefox")

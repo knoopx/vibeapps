@@ -97,19 +97,6 @@ class MusicWindow(PickerWindow):
     def _scan_music_directory(self) -> None:
         self._scanning_coordinator._scan_music_directory()
 
-    def _update_releases(self, releases: List[ReleaseItem]) -> None:
-        self._all_releases = releases
-        self.remove_all_items()
-        for release in self._all_releases:
-            self.add_item(release)
-        if self._all_releases:
-            self._show_results()
-        else:
-            self._show_empty(
-                title="No Music Found",
-                description=f"No audio files found in {self._music_dir}",
-            )
-
     def _create_release_item_converter(self):
         from serialization import create_release_item_converter
 
@@ -344,9 +331,6 @@ class MusicWindow(PickerWindow):
             self._show_progress()
         else:
             self._hide_progress()
-
-    def _refresh_ui_with_sorted_releases(self) -> None:
-        self._filter.refresh_ui_with_sorted_releases()
 
     def on_close_request(self) -> bool:
         self._operations_coordinator.clear_all_operations()

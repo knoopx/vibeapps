@@ -29,7 +29,6 @@ class NoteContentView(Gtk.Box):
         self.parent_window = None
         self.is_editing = False
         self._current_content = ""
-        self.processing_enter_edit_mode = False
         self.content_stack = Gtk.Stack()
         self.content_stack.set_hexpand(True)
         self.content_stack.set_vexpand(True)

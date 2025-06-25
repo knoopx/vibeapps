@@ -32,7 +32,6 @@ class MusicScanner:
         self._scan_total_estimated = 0
         self._scan_generator = None
         self._scan_progress = 0.0
-        self._scan_current_count = 0
 
     def cancel_scan(self) -> None:
         self._scan_cancelled = True
@@ -41,7 +40,6 @@ class MusicScanner:
         self._scan_generator = None
         self._scan_cancelled = False
         self._scan_progress = 0.0
-        self._scan_current_count = 0
 
     def start_incremental_scan(self):
         self._scan_generator = self.scan_music_directory()
@@ -66,15 +64,11 @@ class MusicScanner:
                 self._scan_progress = result[1]
                 return (result, False)
             elif result is not None:
-                self._scan_current_count += 1
                 return (result, False)
             else:
                 return (None, False)
         except StopIteration:
             return (None, True)
-
-    def get_scan_progress(self) -> float:
-        return self._scan_progress
 
     def scan_music_directory(
         self,
@@ -82,14 +76,13 @@ class MusicScanner:
         try:
             found_releases = set()
             dirs_processed = 0
-            releases_found = 0
             total_dirs_estimated = 0
-            for root, dirs, files in os.walk(self.music_dir, followlinks=True):
+            for root, _, files in os.walk(self.music_dir, followlinks=True):
                 total_dirs_estimated += 1
                 if total_dirs_estimated > 10000:
                     break
             self._scan_total_estimated = total_dirs_estimated
-            for root, dirs, files in os.walk(self.music_dir, followlinks=True):
+            for root, _, files in os.walk(self.music_dir, followlinks=True):
                 if self._scan_cancelled:
                     return
                 root_path = Path(root)
@@ -117,7 +110,6 @@ class MusicScanner:
                             path=path_str,
                             track_count=len(audio_files),
                         )
-                        releases_found += 1
                         yield new_release
                 dirs_processed += 1
                 if dirs_processed % 10 == 0:

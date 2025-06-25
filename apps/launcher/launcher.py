@@ -202,11 +202,6 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.list_box.append(row)
         return row
 
-    def load_apps(self):
-        """Legacy method - now redirects to populate from launcher"""
-        if not self.apps_loaded:
-            self._populate_apps_from_launcher()
-
     def on_search_changed(self, entry):
         search_text = entry.get_text().lower()
         visible_rows = []
@@ -348,16 +343,6 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.launcher_app.refresh_apps()
         self.set_visible(False)
         return True
-
-    def refresh_app_list(self):
-        """Refresh the app list by reloading from launcher app"""
-        if self.launcher_app:
-            # Trigger refresh in launcher app
-            self.launcher_app.refresh_apps()
-            # Wait a moment for apps to load, then repopulate UI
-            GLib.timeout_add(100, self._populate_apps_from_launcher)
-        self.search_entry.grab_focus()
-
 
 class Launcher(Adw.Application):
     def __init__(self):
