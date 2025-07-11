@@ -1,0 +1,23 @@
+{
+  "include": ["apps"],
+  "exclude": ["**/node_modules", "**/__pycache__"],
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "reportMissingTypeStubs": false,
+  "reportAttributeAccessIssue": false,
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "basic",
+  "ignore": [],
+  "stubPath": "typings",
+  "executionEnvironments": [
+    {
+      "root": "apps",
+      "extraPaths": [],
+      "reportMissingImports": false,
+      "reportMissingModuleSource": false,
+      "reportMissingTypeStubs": false,
+      "reportAttributeAccessIssue": false
+    }
+  ]
+}

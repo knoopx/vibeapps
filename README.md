@@ -5,61 +5,73 @@ A collection of fast, keyboard-centric, minimalist GTK4/Adwaita applications bui
 ## Applications
 
 ### [Bookmarks](apps/bookmarks/README.md)
+
 A fast and intuitive bookmark browser with real-time search, automatic Firefox profile detection, context menu actions, and keyboard navigation.
 
 ![Bookmarks](apps/bookmarks/screenshot.png)
 
 ### [Chat](apps/chat/README.md)
+
 An AI-powered chat application using OpenAI's GPT models, with real-time streaming responses, markdown rendering, and conversation history management.
 
 ![Chat](apps/chat/screenshot.png)
 
 ### [Dataset Viewer](apps/dataset-viewer/README.md)
+
 A specialized GTK4 dataset viewer for images and captions, with live caption editing and efficient keyboard navigation.
 
 ![Dataset Viewer](apps/dataset-viewer/screenshot.png)
 
 ### [Launcher](apps/launcher/README.md)
+
 An intelligent GTK4 application launcher with fuzzy search, smart ranking, and adaptive suggestions based on usage patterns.
 
 ![Launcher](apps/launcher/screenshot.png)
 
 ### [Music](apps/music/README.md)
+
 A music library manager with intelligent scanning, automatic metadata extraction, custom collections, star ratings, and advanced filtering.
 
 ![Music](apps/music/screenshot.png)
 
 ### [Notes](apps/notes/README.md)
+
 A markdown note-taking app with live preview, fast fuzzy search, file management, and wiki-links support.
 
 ![Notes](apps/notes/screenshot.png)
 
 ### [Nix Package Search](apps/nix-packages/README.md)
+
 A modern GTK4 interface for real-time Nix package search with detailed package information and clipboard integration.
 
 ![Nix Packages](apps/nix-packages/screenshot.png)
 
 ### [Scratchpad](apps/scratchpad/README.md)
+
 An interactive scratchpad calculator with real-time expression evaluation, variable support, error highlighting, and advanced mathematical functions.
 
 ![Scratchpad](apps/scratchpad/screenshot.png)
 
 ### [WebKit Shell](apps/webkit-shell/README.md)
+
 A lightweight WebKit-based shell for creating dedicated web app windows, with session persistence, custom window settings, and CLI options.
 
 ![Webkit Shell](apps/webkit-shell/screenshot.png)
 
 ### [Windows](apps/windows/README.md)
+
 A Niri compositor window management UI with live window listing, advanced search, and window control operations.
 
 ![Windows](apps/windows/screenshot.png)
 
 ### [Wireless Networks](apps/wireless-networks/README.md)
+
 A comprehensive GTK4 WiFi manager with real-time network scanning, connection management, security status display, and detailed network information.
 
 ![Wireless Networks](apps/wireless-networks/screenshot.png)
 
 ### Utilities
+
 - [md2html](utils/md2html/): A markdown-to-HTML converter with support for GFM, wiki-links, and syntax highlighting.
 - [raise-or-open-url](utils/raise-or-open-url/): A utility to raise existing windows or open URLs using Niri or brotab.
 
@@ -184,7 +196,25 @@ After rebuilding your home-manager configuration, all enabled programs will be a
   - Uses dateparser to parse natural language
   - Shows calendar when creating new event
 
+## Type Checking with Pyright
+
+This project uses [Pyright](https://github.com/microsoft/pyright) for static type checking. However, many of the core dependencies (such as PyGObject/GTK and some third-party modules) are dynamic and do not ship with type stubs. To avoid false positives, the `pyrightconfig.json` is configured to suppress missing import, missing type stub, and attribute access errors for these modules.
+
+**Limitations:**
+
+- Pyright cannot fully type-check dynamic modules like `gi.repository.*` (GTK, Adw, GLib, etc.).
+- Attribute errors on objects from these modules may be false positives.
+- For best results, add type annotations to your own code and check for `None` before accessing attributes on objects that may be optional.
+- If you add new third-party modules without type stubs, consider generating stubs with `pyright --createstub <module>` or updating the config as needed.
+
+**Best Practices:**
+
+- Use type annotations in your own code to maximize the benefits of static analysis.
+- Check for `None` before accessing attributes on objects that may be optional.
+- Review Pyright output for real issues, but be aware of the limitations above.
+
+See `pyrightconfig.json` for details on the current configuration.
 
 # Credits
 
-* Icons from https://www.thiings.co/things
+- Icons from https://www.thiings.co/things
