@@ -28,6 +28,26 @@ class PackageItem(PickerItem):
         self.homepage = homepage
         self.licenses = licenses
 
+
+class NixPackageListItem(Gtk.Box):
+    def __init__(self):
+        super().__init__(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=6,
+            margin_top=6,
+            margin_bottom=6,
+            margin_start=12,
+            margin_end=12,
+        )
+        self.title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True)
+        self.version_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True)
+        self.version_label.add_css_class('dim-label')
+        self.desc_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True, lines=3)
+        self.append(self.title_label)
+        self.append(self.version_label)
+        self.append(self.desc_label)
+
+
 class NixPackagesWindow(PickerWindow):
 
     def __init__(self, **kwargs):
@@ -56,27 +76,22 @@ class NixPackagesWindow(PickerWindow):
     def on_item_activated(self, item):
         if item and item.homepage:
             Gtk.show_uri(self, item.homepage, Gdk.CURRENT_TIME)
-            GLib.timeout_add(50, self.get_application().quit)
+            app = self.get_application()
+            if app is not None and hasattr(app, "quit"):
+                GLib.timeout_add(50, app.quit)
 
     def setup_list_item(self, list_item):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6, margin_start=12, margin_end=12)
-        title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True)
-        version_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True, css_classes=['dim-label'])
-        desc_label = Gtk.Label(halign=Gtk.Align.START, xalign=0, wrap=True, lines=3)
-        box.append(title_label)
-        box.append(version_label)
-        box.append(desc_label)
-        list_item.set_child(Adw.ActionRow(child=box))
+        widget = NixPackageListItem()
+        list_item.set_child(Adw.ActionRow(child=widget))
 
     def bind_list_item(self, list_item, item):
         action_row = list_item.get_child()
-        box = action_row.get_child()
-        title_label = box.get_first_child()
-        version_label = title_label.get_next_sibling()
-        desc_label = version_label.get_next_sibling()
-        title_label.set_markup(f'<big><b>{GLib.markup_escape_text(item.name)}</b></big>')
-        version_label.set_text(f'Version: {item.version}')
-        desc_label.set_text(item.description)
+        if action_row is not None:
+            widget = action_row.get_child()
+            if isinstance(widget, NixPackageListItem):
+                widget.title_label.set_markup(f'<big><b>{GLib.markup_escape_text(item.name)}</b></big>')
+                widget.version_label.set_text(f'Version: {item.version}')
+                widget.desc_label.set_text(item.description)
 
     def get_empty_icon(self):
         return 'system-search-symbolic'

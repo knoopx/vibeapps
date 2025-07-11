@@ -83,6 +83,60 @@ class WiFiNetwork(PickerItem):
         return hash(self.bssid)
 
 
+
+class WiFiNetworkListItem(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, margin_top=8, margin_bottom=8, margin_start=12, margin_end=12)
+
+        self.signal_icon = Gtk.Image()
+        self.signal_icon.set_pixel_size(20)
+
+        self.info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.info_box.set_hexpand(True)
+
+        self.header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.ssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.ssid_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.ssid_label.add_css_class("heading")
+        self.ssid_label.set_hexpand(True)
+        self.header_box.append(self.ssid_label)
+
+        self.bssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.bssid_label.add_css_class("caption")
+        self.bssid_label.set_opacity(0.7)
+        self.bssid_label.set_ellipsize(Pango.EllipsizeMode.END)
+
+        self.info_box.append(self.header_box)
+        self.info_box.append(self.bssid_label)
+
+        self.signal_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.signal_box.set_valign(Gtk.Align.CENTER)
+
+        self.signal_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
+        self.signal_label.add_css_class("caption")
+        self.signal_label.set_width_chars(6)
+
+        self.details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.details_box.set_halign(Gtk.Align.END)
+
+        self.security_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
+        self.security_label.add_css_class("caption")
+        self.security_label.set_opacity(0.7)
+
+        self.channel_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
+        self.channel_label.add_css_class("caption")
+        self.channel_label.set_opacity(0.7)
+
+        self.details_box.append(self.security_label)
+        self.details_box.append(self.channel_label)
+
+        self.signal_box.append(self.signal_label)
+        self.signal_box.append(self.details_box)
+
+        self.append(self.signal_icon)
+        self.append(self.info_box)
+        self.append(self.signal_box)
+
 class WirelessNetworksWindow(PickerWindow):
 
     def __init__(self, **kwargs):
@@ -135,153 +189,34 @@ class WirelessNetworksWindow(PickerWindow):
             self._connect_to_network(item)
 
     def setup_list_item(self, list_item):
-        main_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=12,
-            margin_top=8,
-            margin_bottom=8,
-            margin_start=12,
-            margin_end=12,
-        )
-
-        # Signal strength icon
-        signal_icon = Gtk.Image()
-        signal_icon.set_pixel_size(20)
-
-        # Network info
-        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        info_box.set_hexpand(True)
-
-        # SSID and security
-        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        ssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        ssid_label.set_ellipsize(Pango.EllipsizeMode.END)
-        ssid_label.add_css_class("heading")
-        ssid_label.set_hexpand(True)  # Make SSID label expand to fill space
-
-        header_box.append(ssid_label)
-
-        # BSSID line
-        bssid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        bssid_label.add_css_class("caption")
-        bssid_label.set_opacity(0.7)
-        bssid_label.set_ellipsize(Pango.EllipsizeMode.END)
-
-        info_box.append(header_box)
-        info_box.append(bssid_label)        # Signal strength and details
-        signal_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        signal_box.set_valign(Gtk.Align.CENTER)
-
-        signal_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
-        signal_label.add_css_class("caption")
-        signal_label.set_width_chars(6)
-
-        # Details line (security and channel)
-        details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        details_box.set_halign(Gtk.Align.END)
-
-        security_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
-        security_label.add_css_class("caption")
-        security_label.set_opacity(0.7)
-
-        channel_label = Gtk.Label(halign=Gtk.Align.END, xalign=1)
-        channel_label.add_css_class("caption")
-        channel_label.set_opacity(0.7)
-
-        details_box.append(security_label)
-        details_box.append(channel_label)
-
-        signal_box.append(signal_label)
-        signal_box.append(details_box)
-
-        main_box.append(signal_icon)
-        main_box.append(info_box)
-        main_box.append(signal_box)
-
-        list_item.set_child(main_box)
+        widget = WiFiNetworkListItem()
+        list_item.set_child(widget)
 
     def bind_list_item(self, list_item, item):
-        main_box = list_item.get_child()
-        if not main_box:
+        widget = list_item.get_child()
+        if not isinstance(widget, WiFiNetworkListItem):
             return
 
-        # Get widgets by walking the hierarchy
-        child = main_box.get_first_child()
-        signal_icon = child
-
-        child = child.get_next_sibling() if child else None
-        info_box = child
-
-        child = child.get_next_sibling() if child else None
-        signal_box = child
-
-        if not info_box:
-            return
-
-        # Get info box children
-        header_box = info_box.get_first_child()
-        if not header_box:
-            return
-
-        bssid_label = header_box.get_next_sibling()        # Get header box children
-        ssid_label = header_box.get_first_child()        # Get signal box children
-        if signal_box:
-            signal_label = signal_box.get_first_child()
-            details_box = signal_label.get_next_sibling() if signal_label else None
-
-            # Get details box children (security and channel)
-            if details_box:
-                security_label = details_box.get_first_child()
-                channel_label = security_label.get_next_sibling() if security_label else None
-            else:
-                security_label = None
-                channel_label = None
+        ssid_text = item.ssid or "Hidden Network"
+        widget.ssid_label.set_text(ssid_text)
+        if item.active:
+            widget.ssid_label.add_css_class("heading")
+            widget.ssid_label.set_markup(f"<b>{GLib.markup_escape_text(ssid_text)}</b>")
         else:
-            signal_label = None
-            security_label = None
-            channel_label = None
+            widget.ssid_label.remove_css_class("heading")
+            widget.ssid_label.set_text(ssid_text)
 
-        # Bind data
-        if ssid_label:
-            ssid_text = item.ssid or "Hidden Network"
-            ssid_label.set_text(ssid_text)
-
-            # Make active connections bold
-            if item.active:
-                ssid_label.add_css_class("heading")
-                ssid_label.set_markup(f"<b>{GLib.markup_escape_text(ssid_text)}</b>")
-            else:
-                ssid_label.remove_css_class("heading")
-                ssid_label.set_text(ssid_text)
-
-        # BSSID
-        if bssid_label:
-            bssid_label.set_text(item.bssid)
-
-        # Signal icon
-        if signal_icon:
-            signal_icon.set_from_icon_name(item.get_signal_icon())
-
-        # Security text
-        if security_label:
-            security_text = (
-                item.security if item.security and item.security != "--" else "Open"
-            )
-            security_label.set_text(security_text)
-
-        # Channel
-        if channel_label:
-            if item.channel and item.channel.strip():
-                channel_str = item.channel.strip()
-                # Channel should be a simple decimal number
-                channel_text = f"Ch {channel_str}"
-            else:
-                channel_text = ""
-            channel_label.set_text(channel_text)
-
-        # Signal strength
-        if signal_label:
-            signal_label.set_text(f"{item.signal}%")
+        widget.bssid_label.set_text(item.bssid)
+        widget.signal_icon.set_from_icon_name(item.get_signal_icon())
+        security_text = item.security if item.security and item.security != "--" else "Open"
+        widget.security_label.set_text(security_text)
+        if item.channel and item.channel.strip():
+            channel_str = item.channel.strip()
+            channel_text = f"Ch {channel_str}"
+        else:
+            channel_text = ""
+        widget.channel_label.set_text(channel_text)
+        widget.signal_label.set_text(f"{item.signal}%")
 
     def get_empty_icon(self):
         return "network-wireless-symbolic"
@@ -726,7 +661,7 @@ class WirelessNetworksWindow(PickerWindow):
         """Restore selection by BSSID"""
         for i in range(self._item_store.get_n_items()):
             item = self._item_store.get_item(i)
-            if item.bssid == selected_bssid:
+            if item is not None and getattr(item, 'bssid', None) == selected_bssid:
                 self._selection_model.set_selected(i)
                 return True
         return False

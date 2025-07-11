@@ -4,15 +4,15 @@ import gi
 import json
 import subprocess
 import sys
-from typing import Optional, List
+from typing import Optional
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Gio, Pango
+from gi.repository import Gtk, Adw, GLib, GObject, Gio, Pango
 from picker_window import PickerWindow, PickerItem
 
 APP_ID = "net.knoopx.windows"
-class WindowItemWidget(Gtk.Box):
+class WindowListItem(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, margin_top=8, margin_bottom=8, margin_start=12, margin_end=12)
 
@@ -191,12 +191,12 @@ class WindowsWindow(PickerWindow):
             dialog.present()
 
     def setup_list_item(self, list_item):
-        widget = WindowItemWidget()
+        widget = WindowListItem()
         list_item.set_child(widget)
 
     def bind_list_item(self, list_item, item):
         widget = list_item.get_child()
-        if not isinstance(widget, WindowItemWidget):
+        if not isinstance(widget, WindowListItem):
             return
 
         widget.title_label.set_text(item.get_display_title())

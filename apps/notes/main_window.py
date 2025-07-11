@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from gi.repository import Gtk, Adw, Gio, Pango, Gdk, GLib
+from gi.repository import Gtk, Adw, Gio, Pango, Gdk
 from constants import EXT, NOTES_DIR
 from note_content_view import NoteContentView
 from repository import Repository

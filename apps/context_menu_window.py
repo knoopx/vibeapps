@@ -2,9 +2,9 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib, GObject, Gio
+from gi.repository import Gtk, GLib, GObject
 from picker_window import PickerWindow, PickerItem
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 
 class ContextMenuAction(PickerItem):
@@ -12,12 +12,24 @@ class ContextMenuAction(PickerItem):
     label = GObject.Property(type=str, default="")
     action_name = GObject.Property(type=str, default="")
 
-    def __init__(self, label: str, action_name: str, callback: Callable = None):
+    def __init__(self, label: str, action_name: str, callback: 'Optional[Callable]' = None):
         super().__init__()
         self.label = label
         self.action_name = action_name
         self.callback = callback
 
+
+
+class ContextMenuListItem(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.label = Gtk.Label()
+        self.label.set_halign(Gtk.Align.START)
+        self.label.set_margin_top(8)
+        self.label.set_margin_bottom(8)
+        self.label.set_margin_start(12)
+        self.label.set_margin_end(12)
+        self.append(self.label)
 
 class ContextMenuWindow(PickerWindow):
 
@@ -71,18 +83,13 @@ class ContextMenuWindow(PickerWindow):
         return None
 
     def setup_list_item(self, list_item):
-        label = Gtk.Label()
-        label.set_halign(Gtk.Align.START)
-        label.set_margin_top(8)
-        label.set_margin_bottom(8)
-        label.set_margin_start(12)
-        label.set_margin_end(12)
-        list_item.set_child(label)
+        widget = ContextMenuListItem()
+        list_item.set_child(widget)
 
     def bind_list_item(self, list_item, item):
-        label = list_item.get_child()
-        assert isinstance(label, Gtk.Label)
-        label.set_text(item.label)
+        widget = list_item.get_child()
+        assert isinstance(widget, ContextMenuListItem)
+        widget.label.set_text(item.label)
 
     def _load_actions_immediately(self):
         for action in self._actions:

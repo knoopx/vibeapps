@@ -35,6 +35,32 @@ class BookmarkItem(PickerItem):
         self.date_added = date_added
 
 
+class BookmarkListItem(Gtk.Box):
+    def __init__(self):
+        super().__init__(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=4,
+            margin_top=8,
+            margin_bottom=8,
+            margin_start=12,
+            margin_end=12,
+        )
+        self.title_label = Gtk.Label(
+            halign=Gtk.Align.START,
+            xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+        )
+        self.title_label.add_css_class("title-4")
+        self.url_label = Gtk.Label(
+            halign=Gtk.Align.START, xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR
+        )
+        self.url_label.add_css_class("dim-label")
+        self.url_label.add_css_class("caption")
+        self.append(self.title_label)
+        self.append(self.url_label)
+
+
 class BookmarksWindow(PickerWindowWithPreview):
     def __init__(self, **kwargs):
         super().__init__(
@@ -218,39 +244,19 @@ class BookmarksWindow(PickerWindowWithPreview):
     def on_item_activated(self, item):
         if item and item.url:
             Gtk.show_uri(self, item.url, Gdk.CURRENT_TIME)
-            GLib.timeout_add(50, self.get_application().quit)
+            app = self.get_application()
+            if app is not None and hasattr(app, "quit"):
+                GLib.timeout_add(50, app.quit)
 
     def setup_list_item(self, list_item):
-        main_box = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=4,
-            margin_top=8,
-            margin_bottom=8,
-            margin_start=12,
-            margin_end=12,
-        )
-        title_label = Gtk.Label(
-            halign=Gtk.Align.START,
-            xalign=0,
-            wrap=True,
-            wrap_mode=Pango.WrapMode.WORD_CHAR,
-        )
-        title_label.add_css_class("title-4")
-        url_label = Gtk.Label(
-            halign=Gtk.Align.START, xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR
-        )
-        url_label.add_css_class("dim-label")
-        url_label.add_css_class("caption")
-        main_box.append(title_label)
-        main_box.append(url_label)
-        list_item.set_child(main_box)
+        widget = BookmarkListItem()
+        list_item.set_child(widget)
 
     def bind_list_item(self, list_item, item):
-        main_box = list_item.get_child()
-        title_label = main_box.get_first_child()
-        url_label = title_label.get_next_sibling()
-        title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
-        url_label.set_text(item.url)
+        widget = list_item.get_child()
+        if isinstance(widget, BookmarkListItem):
+            widget.title_label.set_markup(f"<b>{GLib.markup_escape_text(item.title)}</b>")
+            widget.url_label.set_text(item.url)
 
     def get_context_menu_model(self, item) -> Optional[Gio.Menu]:
         if not item:
