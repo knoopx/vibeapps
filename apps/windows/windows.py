@@ -1,3 +1,5 @@
+
+
 import gi
 import json
 import subprocess
@@ -10,6 +12,75 @@ from gi.repository import Gtk, Adw, GLib, GObject, Gdk, Gio, Pango
 from picker_window import PickerWindow, PickerItem
 
 APP_ID = "net.knoopx.windows"
+class WindowItemWidget(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, margin_top=8, margin_bottom=8, margin_start=12, margin_end=12)
+
+        # Window icon (placeholder)
+        self.icon = Gtk.Image.new_from_icon_name("application-x-executable")
+        self.icon.set_icon_size(Gtk.IconSize.LARGE)
+        self.icon.set_valign(Gtk.Align.CENTER)
+
+        # Content box
+        self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.content_box.set_hexpand(True)
+
+        # Title and status row
+        self.title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        self.title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.title_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.title_label.add_css_class("heading")
+
+        self.status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+
+        self.urgent_badge = Gtk.Label()
+        self.urgent_badge.add_css_class("caption")
+        self.urgent_badge.add_css_class("error")
+        self.urgent_badge.set_visible(False)
+
+        self.floating_badge = Gtk.Label()
+        self.floating_badge.add_css_class("caption")
+        self.floating_badge.add_css_class("warning")
+        self.floating_badge.set_visible(False)
+
+        self.status_box.append(self.urgent_badge)
+        self.status_box.append(self.floating_badge)
+
+        self.title_row.append(self.title_label)
+        self.title_row.append(self.status_box)
+
+        # App info row
+        self.app_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.app_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.app_label.add_css_class("caption")
+        self.app_label.set_opacity(0.7)
+
+        # Window details row
+        self.details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        self.id_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.id_label.add_css_class("caption")
+        self.id_label.set_opacity(0.7)
+
+        self.workspace_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.workspace_label.add_css_class("caption")
+        self.workspace_label.set_opacity(0.7)
+
+        self.pid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
+        self.pid_label.add_css_class("caption")
+        self.pid_label.set_opacity(0.7)
+
+        self.details_box.append(self.id_label)
+        self.details_box.append(self.workspace_label)
+        self.details_box.append(self.pid_label)
+
+        self.content_box.append(self.title_row)
+        self.content_box.append(self.app_label)
+        self.content_box.append(self.details_box)
+
+        self.append(self.icon)
+        self.append(self.content_box)
 
 
 class WindowItem(PickerItem):
@@ -120,126 +191,36 @@ class WindowsWindow(PickerWindow):
             dialog.present()
 
     def setup_list_item(self, list_item):
-        main_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=12,
-            margin_top=8,
-            margin_bottom=8,
-            margin_start=12,
-            margin_end=12,
-        )
-
-        # Window icon (placeholder)
-        icon = Gtk.Image.new_from_icon_name("application-x-executable")
-        icon.set_icon_size(Gtk.IconSize.LARGE)
-        icon.set_valign(Gtk.Align.CENTER)
-
-        # Content box
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        content_box.set_hexpand(True)
-
-        # Title and status row
-        title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-
-        title_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        title_label.set_ellipsize(Pango.EllipsizeMode.END)
-        title_label.add_css_class("heading")
-
-        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-
-        urgent_badge = Gtk.Label()
-        urgent_badge.add_css_class("caption")
-        urgent_badge.add_css_class("error")
-        urgent_badge.set_visible(False)
-
-        floating_badge = Gtk.Label()
-        floating_badge.add_css_class("caption")
-        floating_badge.add_css_class("warning")
-        floating_badge.set_visible(False)
-
-        status_box.append(urgent_badge)
-        status_box.append(floating_badge)
-
-        title_row.append(title_label)
-        title_row.append(status_box)
-
-        # App info row
-        app_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        app_label.set_ellipsize(Pango.EllipsizeMode.END)
-        app_label.add_css_class("caption")
-        app_label.set_opacity(0.7)
-
-        # Window details row
-        details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-
-        id_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        id_label.add_css_class("caption")
-        id_label.set_opacity(0.7)
-
-        workspace_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        workspace_label.add_css_class("caption")
-        workspace_label.set_opacity(0.7)
-
-        pid_label = Gtk.Label(halign=Gtk.Align.START, xalign=0)
-        pid_label.add_css_class("caption")
-        pid_label.set_opacity(0.7)
-
-        details_box.append(id_label)
-        details_box.append(workspace_label)
-        details_box.append(pid_label)
-
-        content_box.append(title_row)
-        content_box.append(app_label)
-        content_box.append(details_box)
-
-        main_box.append(icon)
-        main_box.append(content_box)
-
-        list_item.set_child(main_box)
+        widget = WindowItemWidget()
+        list_item.set_child(widget)
 
     def bind_list_item(self, list_item, item):
-        main_box = list_item.get_child()
-        icon = main_box.get_first_child()
-        content_box = main_box.get_last_child()
+        widget = list_item.get_child()
+        if not isinstance(widget, WindowItemWidget):
+            return
 
-        title_row = content_box.get_first_child()
-        app_label = title_row.get_next_sibling()
-        details_box = app_label.get_next_sibling()
-
-        title_label = title_row.get_first_child()
-        status_box = title_row.get_last_child()
-
-        urgent_badge = status_box.get_first_child()
-        floating_badge = urgent_badge.get_next_sibling()
-
-        id_label = details_box.get_first_child()
-        workspace_label = id_label.get_next_sibling()
-        pid_label = workspace_label.get_next_sibling()
-
-        # Set content
-        title_label.set_text(item.get_display_title())
-        app_label.set_text(item.get_display_app_id())
-
-        id_label.set_text(f"ID: {item.window_id}")
-        workspace_label.set_text(f"WS: {item.workspace_id}")
-        pid_label.set_text(f"PID: {item.pid}")
+        widget.title_label.set_text(item.get_display_title())
+        widget.app_label.set_text(item.get_display_app_id())
+        widget.id_label.set_text(f"ID: {item.window_id}")
+        widget.workspace_label.set_text(f"WS: {item.workspace_id}")
+        widget.pid_label.set_text(f"PID: {item.pid}")
 
         # Set status badges
         if item.is_urgent:
-            urgent_badge.set_text("URGENT")
-            urgent_badge.set_visible(True)
+            widget.urgent_badge.set_text("URGENT")
+            widget.urgent_badge.set_visible(True)
         else:
-            urgent_badge.set_visible(False)
+            widget.urgent_badge.set_visible(False)
 
         if item.is_floating:
-            floating_badge.set_text("FLOATING")
-            floating_badge.set_visible(True)
+            widget.floating_badge.set_text("FLOATING")
+            widget.floating_badge.set_visible(True)
         else:
-            floating_badge.set_visible(False)
+            widget.floating_badge.set_visible(False)
 
         # Set appropriate icon based on app_id
         icon_name = self._get_icon_for_app(item.app_id)
-        icon.set_from_icon_name(icon_name)
+        widget.icon.set_from_icon_name(icon_name)
 
     def _get_icon_for_app(self, app_id: str) -> str:
         """Get appropriate icon for app_id"""
@@ -393,7 +374,7 @@ class WindowsWindow(PickerWindow):
         """Restore selection based on window ID"""
         for i in range(self._item_store.get_n_items()):
             item = self._item_store.get_item(i)
-            if item.window_id == selected_window_id:
+            if item is not None and getattr(item, 'window_id', None) == selected_window_id:
                 self._selection_model.set_selected(i)
                 return True
         return False
