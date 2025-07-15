@@ -73,7 +73,6 @@ A comprehensive GTK4 WiFi manager with real-time network scanning, connection ma
 ### Utilities
 
 - [md2html](utils/md2html/): A markdown-to-HTML converter with support for GFM, wiki-links, and syntax highlighting.
-- [raise-or-open-url](utils/raise-or-open-url/): A utility to raise existing windows or open URLs using Niri or brotab.
 
 # Installation and Usage
 
@@ -158,9 +157,7 @@ The following programs can be enabled individually:
 - `webkit-shell` - Minimal web browser for wrapping web applications
 - `windows` - Window manager for niri with focus/close actions
 - `wireless-networks` - WiFi network manager with connection and security management
-
 - `md2html` - Advanced markdown to HTML converter
-- `raise-or-open-url` - Smart URL/window management
 
 ### Example Configuration
 

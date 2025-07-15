@@ -25,7 +25,6 @@
       scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
 
       md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
-      raise-or-open-url = pkgs.callPackage ./utils/raise-or-open-url/raise-or-open-url.nix {};
     };
   in {
     packages = forAllSystems packageSet;

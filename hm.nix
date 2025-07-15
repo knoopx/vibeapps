@@ -21,7 +21,6 @@
     wireless-networks = pkgs.callPackage ./apps/wireless-networks/wireless-networks.nix {};
 
     md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
-    raise-or-open-url = pkgs.callPackage ./utils/raise-or-open-url/raise-or-open-url.nix {};
   };
 
   # Define all available programs
@@ -34,7 +33,6 @@
     "music"
     "notes"
     "process-manager"
-    "raise-or-open-url"
     "nix-packages"
     "scratchpad"
     "windows"
