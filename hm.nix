@@ -19,6 +19,7 @@
     scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
     windows = pkgs.callPackage ./apps/windows/windows.nix {};
     wireless-networks = pkgs.callPackage ./apps/wireless-networks/wireless-networks.nix {};
+    file-picker = pkgs.callPackage ./apps/file-picker/file-picker.nix {};
 
     md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
   };
@@ -34,6 +35,7 @@
     "notes"
     "process-manager"
     "nix-packages"
+    "file-picker"
     "scratchpad"
     "windows"
     "wireless-networks"
