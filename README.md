@@ -193,30 +193,12 @@ After rebuilding your home-manager configuration, all enabled programs will be a
 - Passwords app (libsecret)
 - Diffusers app
 - Browser History
+- Regular Expression REPL
 - Events app
   - uses evolution-data-server
   - Search also parses time and appies filters
   - Uses dateparser to parse natural language
   - Shows calendar when creating new event
-
-## Type Checking with Pyright
-
-This project uses [Pyright](https://github.com/microsoft/pyright) for static type checking. However, many of the core dependencies (such as PyGObject/GTK and some third-party modules) are dynamic and do not ship with type stubs. To avoid false positives, the `pyrightconfig.json` is configured to suppress missing import, missing type stub, and attribute access errors for these modules.
-
-**Limitations:**
-
-- Pyright cannot fully type-check dynamic modules like `gi.repository.*` (GTK, Adw, GLib, etc.).
-- Attribute errors on objects from these modules may be false positives.
-- For best results, add type annotations to your own code and check for `None` before accessing attributes on objects that may be optional.
-- If you add new third-party modules without type stubs, consider generating stubs with `pyright --createstub <module>` or updating the config as needed.
-
-**Best Practices:**
-
-- Use type annotations in your own code to maximize the benefits of static analysis.
-- Check for `None` before accessing attributes on objects that may be optional.
-- Review Pyright output for real issues, but be aware of the limitations above.
-
-See `pyrightconfig.json` for details on the current configuration.
 
 # Credits
 
