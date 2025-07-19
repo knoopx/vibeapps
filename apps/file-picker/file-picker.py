@@ -9,7 +9,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gtk, Adw, Gio, GLib, Gdk, GdkPixbuf
 
 import threading
-from gi.repository import GObject
+from gi.repository import GObject, Pango
 
 @GObject.type_register
 class FileItem(GObject.Object):
@@ -59,6 +59,8 @@ class PickerRowWidget(Gtk.Box):
         self.name_label = Gtk.Label(xalign=0)
         self.name_label.set_hexpand(True)
         self.name_label.set_halign(Gtk.Align.START)
+        self.name_label.set_ellipsize(Pango.EllipsizeMode.START)
+        self.name_label.set_max_width_chars(120)
         self.append(self.name_label)
 
         self.size_label = Gtk.Label(xalign=0)
@@ -83,10 +85,13 @@ class PickerRowWidget(Gtk.Box):
             try:
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(file_path, 32, 32)
                 self.thumbnail.set_from_pixbuf(pixbuf)
+                self.thumbnail.set_visible(True)
             except Exception:
                 self.thumbnail.clear()
+                self.thumbnail.set_visible(False)
         else:
             self.thumbnail.clear()
+            self.thumbnail.set_visible(False)
 
     @staticmethod
     def is_image_file(file_path):
