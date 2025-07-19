@@ -23,6 +23,7 @@
       wireless-networks = pkgs.callPackage ./apps/wireless-networks/wireless-networks.nix {};
       nix-packages = pkgs.callPackage ./apps/nix-packages/nix-packages.nix {};
       scratchpad = pkgs.callPackage ./apps/scratchpad/scratchpad.nix {};
+      file-picker = pkgs.callPackage ./apps/file-picker/file-picker.nix {};
 
       md2html = pkgs.callPackage ./utils/md2html/md2html.nix {};
     };

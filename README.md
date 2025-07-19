@@ -28,6 +28,12 @@ An intelligent GTK4 application launcher with fuzzy search, smart ranking, and a
 
 ![Launcher](apps/launcher/screenshot.png)
 
+### [File Picker](apps/file-picker/README.md)
+
+A fast GTK4 file picker for scripts and automation. Reads grouped file lists from stdin, displays them with checkboxes for multi-selection, and prints selected files to stdout. Designed for keyboard navigation and integration into shell workflows.
+
+![File Picker](apps/file-picker/screenshot.png)
+
 ### [Music](apps/music/README.md)
 
 A music library manager with intelligent scanning, automatic metadata extraction, custom collections, star ratings, and advanced filtering.
