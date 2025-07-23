@@ -134,29 +134,33 @@ class LauncherWindow(Adw.ApplicationWindow):
             self._select_first_visible_row()
 
     def _populate_apps_from_launcher(self):
-        """Populate UI with apps already loaded by launcher app"""
+        """Populate UI with apps already loaded by launcher app asynchronously"""
         if not self.launcher_app or not self.launcher_app.apps:
             return
 
-        # Clear existing apps
         self._clear_list_box()
 
-        # Load apps from launcher app
-        for app_info in self.launcher_app.apps:
-            self._create_row_for_app(app_info)
+        # Prepare app_info list in background thread
+        def prepare_rows():
+            if self.launcher_app and self.launcher_app.apps:
+                app_infos = self.launcher_app.apps[:]
+                GLib.idle_add(self._populate_rows_idle, app_infos, 0)
 
+        threading.Thread(target=prepare_rows, daemon=True).start()
+
+    def _populate_rows_idle(self, app_infos, index):
+        # No batching: create all rows in a single idle callback
+        for i in range(index, len(app_infos)):
+            self._create_row_for_app(app_infos[i])
         self.apps_loaded = True
-
         # Reapply current search filter if one exists
         current_search = self.search_entry.get_text()
         if current_search.strip():
             self.on_search_changed(self.search_entry)
         else:
-            # If no search text, trigger sorting by total launches
             self.on_search_changed(self.search_entry)
             self._select_first_visible_row()
-
-        return False  # Don't repeat timeout
+        return False
 
     def _select_first_visible_row(self):
         """Helper to select the first visible row"""
@@ -204,9 +208,11 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_search_changed(self, entry):
         search_text = entry.get_text().lower()
-        visible_rows = []
+        # Start async filtering and sorting
+        GLib.idle_add(self._async_filter_and_sort_rows, search_text)
 
-        # Iterate through all children of the list box
+    def _async_filter_and_sort_rows(self, search_text):
+        visible_rows = []
         child = self.list_box.get_first_child()
         while child:
             app_info = getattr(child, "app_info", None)
@@ -214,12 +220,10 @@ class LauncherWindow(Adw.ApplicationWindow):
                 app_name = app_info.get_name().lower()
                 if not search_text or search_text in app_name:
                     if search_text:
-                        # When filtering, use relevance score
                         relevance_score = self.app_history.get_search_relevance_score(
                             app_info.get_id(), search_text
                         )
                     else:
-                        # When no filter, use total launch count
                         relevance_score = self.app_history.get_total_launch_count(app_info.get_id())
                     visible_rows.append((child, relevance_score))
                     child.set_visible(True)
@@ -232,7 +236,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             key=lambda x: (-x[1], getattr(x[0], "app_info").get_name().lower())
         )
 
-        # Reorder rows in list box
+        # Reorder all rows in a single idle callback
         for i, (row, _) in enumerate(visible_rows):
             self.list_box.remove(row)
             self.list_box.insert(row, i)
@@ -243,6 +247,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             GLib.idle_add(self._select_row_safe, first_row_to_select)
         else:
             GLib.idle_add(self.list_box.unselect_all)
+        return False
 
     def _select_row_safe(self, row):
         try:
