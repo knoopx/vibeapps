@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import sys
 import os
 import gi
@@ -11,6 +12,8 @@ from gi.repository import Gtk, Adw, Gio, GLib, Gdk, GdkPixbuf
 import threading
 from gi.repository import GObject, Pango
 
+from functools import partial
+
 
 @GObject.type_register
 class FileItem(GObject.Object):
@@ -19,13 +22,17 @@ class FileItem(GObject.Object):
     size = GObject.Property(type=str)
     selected = GObject.Property(type=bool, default=False)
     group_id = GObject.Property(type=int, default=0)
+    # Cached properties for performance
+    file_size = GObject.Property(type=GObject.TYPE_INT64, default=-1)
+    ctime = GObject.Property(type=float, default=-1.0)
+    mtime = GObject.Property(type=float, default=-1.0)
+    image_area = GObject.Property(type=int, default=-1)
+    name_length = GObject.Property(type=int, default=0)
 
-    def __init__(self, name, size, group_id=0, selected=False):
+    def __init__(self, **kwargs):
         super().__init__()
-        self.set_property("name", name)
-        self.set_property("size", size)
-        self.set_property("group_id", group_id)
-        self.set_property("selected", selected)
+        for key, value in kwargs.items():
+            self.set_property(key, value)
 
 
 class SectionHeaderWidget(Gtk.Box):
@@ -77,10 +84,10 @@ class PickerRowWidget(Gtk.Box):
         self.add_controller(gesture)
 
     def on_row_clicked(self, gesture, n_press, x, y):
-        alloc = self.check.get_allocation()
+        bounds = self.check.get_bounds()
         if not (
-            alloc.x <= x <= alloc.x + alloc.width
-            and alloc.y <= y <= alloc.y + alloc.height
+            bounds.x <= x <= bounds.x + bounds.width
+            and bounds.y <= y <= bounds.y + bounds.height
         ):
             self.check.set_active(not self.check.get_active())
 
@@ -107,6 +114,8 @@ class PickerRowWidget(Gtk.Box):
 
     @staticmethod
     def format_size(num_bytes):
+        if num_bytes < 0:
+            return "-"
         for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
             if num_bytes < 1024.0:
                 return f"{num_bytes:.1f} {unit}" if unit != "B" else f"{num_bytes} B"
@@ -115,228 +124,184 @@ class PickerRowWidget(Gtk.Box):
 
 
 class FilePickerWindow(Adw.ApplicationWindow):
-    def _get_group_ids(self):
-        group_ids = set()
-        for i in range(self.file_model.get_n_items()):
+    def select_indices(self, indices: set):
+        for i in indices:
             item = self.file_model.get_item(i)
-            if item is not None:
-                group_ids.add(item.get_property("group_id"))
-        return sorted(group_ids)
+            if item:
+                item.set_property("selected", True)
 
-    def _get_items_in_group(self, group_id):
-        items = []
-        for i in range(self.file_model.get_n_items()):
+    def unselect_indices(self, indices: set):
+        for i in indices:
             item = self.file_model.get_item(i)
-            if item is not None and item.get_property("group_id") == group_id:
-                items.append((i, item))
-        return items
+            if item:
+                item.set_property("selected", False)
 
-    def _select_single_per_group(self, indices):
-        # indices: dict of group_id -> index in file_model
-        for i in range(self.file_model.get_n_items()):
-            item = self.file_model.get_item(i)
-            if item is not None:
-                group_id = item.get_property("group_id")
-                item.set_property("selected", indices.get(group_id, -1) == i)
-    def __init__(self, app):
-        super().__init__(application=app, title="File Picker")
-        self.set_default_size(600, 400)
-        self._setup_ui()
-
-        # Add actions for quick selection menu
-        action_map = {
-            "select_first": self.select_first,
-            "select_last": self.select_last,
-            "select_smallest_size": self.select_smallest_size,
-            "select_largest_size": self.select_largest_size,
-            "select_smallest_image": self.select_smallest_image,
-            "select_largest_image": self.select_largest_image,
-            "select_shortest_name": self.select_shortest_name,
-            "select_largest_name": self.select_largest_name,
-            "select_first_created": self.select_first_created,
-            "select_last_created": self.select_last_created,
-            "select_first_modified": self.select_first_modified,
-            "select_last_modified": self.select_last_modified,
-        }
-        for action_name, handler in action_map.items():
-            action = Gio.SimpleAction.new(action_name, None)
-            action.connect("activate", lambda a, p, h=handler: h())
-            self.add_action(action)
-
-    # Quick selection logic implementations
-    def _select_single(self, index):
+    def invert_selection(self):
         for i in range(self.file_model.get_n_items()):
             item = self.file_model.get_item(i)
             if item:
-                item.set_property("selected", i == index)
+                current = item.get_property("selected")
+                item.set_property("selected", not current)
 
-    def select_first(self):
-        indices = {}
+    def set_all_selected(self, selected: bool):
+        for i in range(self.file_model.get_n_items()):
+            item = self.file_model.get_item(i)
+            if item:
+                item.set_property("selected", selected)
+
+    def select_path(self, selected: bool):
+        dialog = Adw.AlertDialog()
+        dialog.set_heading("By Path")
+        dialog.set_body("Enter a glob pattern (e.g. *.jpg, */foo/*.txt):")
+        entry = Gtk.Entry()
+        dialog.set_extra_child(entry)
+        dialog.add_response("ok", "OK")
+        dialog.add_response("cancel", "Cancel")
+        dialog.set_default_response("ok")
+        dialog.set_close_response("cancel")
+
+        def on_response(alert_dialog, response):
+            if response == "ok":
+                pattern = entry.get_text()
+                import fnmatch
+
+                for i in range(self.file_model.get_n_items()):
+                    item = self.file_model.get_item(i)
+                    if item:
+                        path = item.get_property("name")
+                        if fnmatch.fnmatch(path, pattern):
+                            item.set_property("selected", selected)
+            alert_dialog.close()
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
+
+    def _handle_first_last(self, reverse: bool, unselect: bool = False):
+        indices = set()
         for group_id in self._get_group_ids():
             items = self._get_items_in_group(group_id)
             if items:
-                indices[group_id] = items[0][0]
-        self._select_single_per_group(indices)
+                idx = items[-1][0] if reverse else items[0][0]
+                indices.add(idx)
+        if unselect:
+            self.unselect_indices(indices)
+        else:
+            self.select_indices(indices)
 
-    def select_last(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            items = self._get_items_in_group(group_id)
-            if items:
-                indices[group_id] = items[-1][0]
-        self._select_single_per_group(indices)
+    def select_first_last(self, reverse: bool):
+        self._handle_first_last(reverse, unselect=False)
 
-    def select_smallest_size(self):
-        indices = {}
+    def unselect_first_last(self, reverse: bool):
+        self._handle_first_last(reverse, unselect=True)
+
+    def _select_by_criterion(self, key_prop, reverse, unselect):
+        indices = set()
         for group_id in self._get_group_ids():
-            min_idx, min_val = None, float("inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    size = os.path.getsize(item.get_property("name"))
-                    if size < min_val:
-                        min_val, min_idx = size, i
-                except Exception:
+            items_in_group = self._get_items_in_group(group_id)
+            if not items_in_group:
+                continue
+
+            best_item_idx = -1
+            best_val = float("-inf") if reverse else float("inf")
+
+            for i, item in items_in_group:
+                val = item.get_property(key_prop)
+                if key_prop in ["file_size", "image_area", "ctime", "mtime"] and val < 0:
                     continue
-            if min_idx is not None:
-                indices[group_id] = min_idx
-        self._select_single_per_group(indices)
 
-    def select_largest_size(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            max_idx, max_val = None, float("-inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    size = os.path.getsize(item.get_property("name"))
-                    if size > max_val:
-                        max_val, max_idx = size, i
-                except Exception:
-                    continue
-            if max_idx is not None:
-                indices[group_id] = max_idx
-        self._select_single_per_group(indices)
+                if (reverse and val > best_val) or (not reverse and val < best_val):
+                    best_val = val
+                    best_item_idx = i
 
-    def select_smallest_image(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            min_idx, min_val = None, float("inf")
-            for i, item in self._get_items_in_group(group_id):
-                path = item.get_property("name")
-                if PickerRowWidget.is_image_file(path):
-                    try:
-                        pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-                        if pixbuf is not None:
-                            area = pixbuf.get_width() * pixbuf.get_height()
-                            if area < min_val:
-                                min_val, min_idx = area, i
-                    except Exception:
-                        continue
-            if min_idx is not None:
-                indices[group_id] = min_idx
-        self._select_single_per_group(indices)
+            if best_item_idx != -1:
+                indices.add(best_item_idx)
 
-    def select_largest_image(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            max_idx, max_val = None, float("-inf")
-            for i, item in self._get_items_in_group(group_id):
-                path = item.get_property("name")
-                if PickerRowWidget.is_image_file(path):
-                    try:
-                        pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-                        if pixbuf is not None:
-                            area = pixbuf.get_width() * pixbuf.get_height()
-                            if area > max_val:
-                                max_val, max_idx = area, i
-                    except Exception:
-                        continue
-            if max_idx is not None:
-                indices[group_id] = max_idx
-        self._select_single_per_group(indices)
+        if unselect:
+            self.unselect_indices(indices)
+        else:
+            self.select_indices(indices)
 
-    def select_shortest_name(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            min_idx, min_val = None, float("inf")
-            for i, item in self._get_items_in_group(group_id):
-                name_len = len(os.path.basename(item.get_property("name")))
-                if name_len < min_val:
-                    min_val, min_idx = name_len, i
-            if min_idx is not None:
-                indices[group_id] = min_idx
-        self._select_single_per_group(indices)
+    def _register_actions(self):
+        actions = {
+            "invert_selection": self.invert_selection,
+            "select_all": partial(self.set_all_selected, True),
+            "select_none": partial(self.set_all_selected, False),
+            "select_by_path_glob": partial(self.select_path, True),
+            "unselect_by_path_glob": partial(self.select_path, False),
+        }
 
-    def select_largest_name(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            max_idx, max_val = None, float("-inf")
-            for i, item in self._get_items_in_group(group_id):
-                name_len = len(os.path.basename(item.get_property("name")))
-                if name_len > max_val:
-                    max_val, max_idx = name_len, i
-            if max_idx is not None:
-                indices[group_id] = max_idx
-        self._select_single_per_group(indices)
+        criteria = {
+            "first": (self.select_first_last, self.unselect_first_last),
+            "last": (self.select_first_last, self.unselect_first_last),
+            "smallest_size": ("file_size", False),
+            "largest_size": ("file_size", True),
+            "smallest_image": ("image_area", False),
+            "largest_image": ("image_area", True),
+            "shortest_name": ("name_length", False),
+            "largest_name": ("name_length", True),
+            "first_created": ("ctime", False),
+            "last_created": ("ctime", True),
+            "first_modified": ("mtime", False),
+            "last_modified": ("mtime", True),
+        }
 
-    def select_first_created(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            min_idx, min_val = None, float("inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    ctime = os.path.getctime(item.get_property("name"))
-                    if ctime < min_val:
-                        min_val, min_idx = ctime, i
-                except Exception:
-                    continue
-            if min_idx is not None:
-                indices[group_id] = min_idx
-        self._select_single_per_group(indices)
+        for name, params in criteria.items():
+            for prefix in ["select", "unselect"]:
+                action_name = f"{prefix}_{name}"
+                unselect = prefix == "unselect"
+                if name in ["first", "last"]:
+                    handler = partial(params[0 if not unselect else 1], name == "last")
+                else:
+                    handler = partial(
+                        self._select_by_criterion, params[0], params[1], unselect
+                    )
+                actions[action_name] = handler
 
-    def select_last_created(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            max_idx, max_val = None, float("-inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    ctime = os.path.getctime(item.get_property("name"))
-                    if ctime > max_val:
-                        max_val, max_idx = ctime, i
-                except Exception:
-                    continue
-            if max_idx is not None:
-                indices[group_id] = max_idx
-        self._select_single_per_group(indices)
+        for name, handler in actions.items():
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda a, p, h=handler: h())
+            self.add_action(action)
 
-    def select_first_modified(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            min_idx, min_val = None, float("inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    mtime = os.path.getmtime(item.get_property("name"))
-                    if mtime < min_val:
-                        min_val, min_idx = mtime, i
-                except Exception:
-                    continue
-            if min_idx is not None:
-                indices[group_id] = min_idx
-        self._select_single_per_group(indices)
+    def __init__(self, app):
+        super().__init__(application=app, title="File Picker")
+        self.set_default_size(600, 400)
+        self._register_actions()
+        self._setup_ui()
 
-    def select_last_modified(self):
-        indices = {}
-        for group_id in self._get_group_ids():
-            max_idx, max_val = None, float("-inf")
-            for i, item in self._get_items_in_group(group_id):
-                try:
-                    mtime = os.path.getmtime(item.get_property("name"))
-                    if mtime > max_val:
-                        max_val, max_idx = mtime, i
-                except Exception:
-                    continue
-            if max_idx is not None:
-                indices[group_id] = max_idx
-        self._select_single_per_group(indices)
+    def _create_selection_submenu(self, action_prefix):
+        menu = Gio.Menu()
+        menu.append("By Path...", f"win.{action_prefix}_by_path_glob")
+        date_menu = Gio.Menu()
+        date_menu.append("Newest File (Created)", f"win.{action_prefix}_last_created")
+        date_menu.append("Oldest File (Created)", f"win.{action_prefix}_first_created")
+        date_menu.append("Last Updated (Modified)", f"win.{action_prefix}_last_modified")
+        date_menu.append(
+            "Least Updated (Modified)", f"win.{action_prefix}_first_modified"
+        )
+        menu.append_submenu("By Date", date_menu)
+        size_menu = Gio.Menu()
+        size_menu.append("Largest File Size", f"win.{action_prefix}_largest_size")
+        size_menu.append("Smallest File Size", f"win.{action_prefix}_smallest_size")
+        menu.append_submenu("By Size", size_menu)
+        name_menu = Gio.Menu()
+        name_menu.append("Longest Filename", f"win.{action_prefix}_largest_name")
+        name_menu.append("Shortest Filename", f"win.{action_prefix}_shortest_name")
+        menu.append_submenu("By Name Length", name_menu)
+        image_menu = Gio.Menu()
+        image_menu.append(
+            "Largest Image Dimensions", f"win.{action_prefix}_largest_image"
+        )
+        image_menu.append(
+            "Smallest Image Dimensions", f"win.{action_prefix}_smallest_image"
+        )
+        menu.append_submenu("By Image Dimensions", image_menu)
+        menu.append("First in Group", f"win.{action_prefix}_first")
+        menu.append("Last in Group", f"win.{action_prefix}_last")
+        if action_prefix == "select":
+            menu.append("All", "win.select_all")
+        else:
+            menu.append("All", "win.select_none")
+        return menu
 
     def _setup_ui(self):
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -347,48 +312,12 @@ class FilePickerWindow(Adw.ApplicationWindow):
         select_button.connect("clicked", self.on_select_clicked)
         header.pack_start(select_button)
 
-        # Quick selection menu button
-        menu_button = Gtk.MenuButton()
-        menu_button.add_css_class("flat")
-        icon = Gtk.Image.new_from_icon_name("view-list-symbolic")
-        menu_button.set_child(icon)
-        # GTK4 does not have MenuButtonDirection; not needed
-
-        # Create menu model with submenus
+        menu_button = Gtk.MenuButton.new()
+        menu_button.set_icon_name("view-list-symbolic")
         menu = Gio.Menu()
-
-        # By Date
-        date_menu = Gio.Menu()
-        date_menu.append("Newest File (Created)", "win.select_last_created")
-        date_menu.append("Oldest File (Created)", "win.select_first_created")
-        date_menu.append("Last Updated (Modified)", "win.select_last_modified")
-        date_menu.append("Least Updated (Modified)", "win.select_first_modified")
-        menu.append_submenu("By Date", date_menu)
-
-        # By Size
-        size_menu = Gio.Menu()
-        size_menu.append("Largest File Size", "win.select_largest_size")
-        size_menu.append("Smallest File Size", "win.select_smallest_size")
-        menu.append_submenu("By Size", size_menu)
-
-        # By Name Length
-        name_menu = Gio.Menu()
-        name_menu.append("Longest Filename", "win.select_largest_name")
-        name_menu.append("Shortest Filename", "win.select_shortest_name")
-        menu.append_submenu("By Name Length", name_menu)
-
-        # By Image Dimensions
-        image_menu = Gio.Menu()
-        image_menu.append("Largest Image Dimensions", "win.select_largest_image")
-        image_menu.append("Smallest Image Dimensions", "win.select_smallest_image")
-        menu.append_submenu("By Image Dimensions", image_menu)
-
-        # By Position in Group
-        position_menu = Gio.Menu()
-        position_menu.append("First in Group", "win.select_first")
-        position_menu.append("Last in Group", "win.select_last")
-        menu.append_submenu("By Position", position_menu)
-
+        menu.append_submenu("Select", self._create_selection_submenu("select"))
+        menu.append_submenu("Unselect", self._create_selection_submenu("unselect"))
+        menu.append("Invert Selection", "win.invert_selection")
         menu_button.set_menu_model(menu)
         header.pack_end(menu_button)
         main_box.append(header)
@@ -519,12 +448,41 @@ class FilePickerWindow(Adw.ApplicationWindow):
     def _process_group(self, files, group_count):
         items_to_add = []
         for file_path in files:
+            item_props = {
+                "name": file_path,
+                "size": "-",
+                "group_id": group_count,
+                "selected": False,
+                "file_size": -1,
+                "ctime": -1.0,
+                "mtime": -1.0,
+                "image_area": -1,
+                "name_length": len(os.path.basename(file_path)),
+            }
             try:
-                size = os.path.getsize(file_path)
-                size_str = PickerRowWidget.format_size(size)
+                stat = os.stat(file_path)
+                item_props.update(
+                    {
+                        "file_size": stat.st_size,
+                        "size": PickerRowWidget.format_size(stat.st_size),
+                        "ctime": stat.st_ctime,
+                        "mtime": stat.st_mtime,
+                    }
+                )
+                if PickerRowWidget.is_image_file(file_path):
+                    try:
+                        pixbuf = GdkPixbuf.Pixbuf.new_from_file(file_path)
+                        if pixbuf:
+                            item_props["image_area"] = (
+                                pixbuf.get_width() * pixbuf.get_height()
+                            )
+                    except Exception:
+                        item_props["image_area"] = -1
+            except FileNotFoundError:
+                item_props["name"] = f"[Not Found] {file_path}"
             except Exception:
-                size_str = "-"
-            items_to_add.append(FileItem(file_path, size_str, group_count, False))
+                pass  # Keep default error values
+            items_to_add.append(FileItem(**item_props))
         GLib.idle_add(self._add_items_to_model, items_to_add)
 
     def _add_items_to_model(self, items):
@@ -549,6 +507,22 @@ class FilePickerWindow(Adw.ApplicationWindow):
         if app is not None:
             app.quit()
 
+    def _get_group_ids(self):
+        group_ids = set()
+        for i in range(self.file_model.get_n_items()):
+            item = self.file_model.get_item(i)
+            if item is not None:
+                group_ids.add(item.get_property("group_id"))
+        return sorted(group_ids)
+
+    def _get_items_in_group(self, group_id):
+        items = []
+        for i in range(self.file_model.get_n_items()):
+            item = self.file_model.get_item(i)
+            if item is not None and item.get_property("group_id") == group_id:
+                items.append((i, item))
+        return items
+
 
 class FilePickerApp(Adw.Application):
     def __init__(self):
@@ -567,3 +541,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
