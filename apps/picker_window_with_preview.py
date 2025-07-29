@@ -13,7 +13,7 @@ class PickerWindowWithPreview(PickerWindow, ABC, metaclass=GObjectABCMeta):
         self,
         title: str = "Picker",
         search_placeholder: str = "Search...",
-        window_size: tuple = (1280, 620),
+        window_size=(1240, 900),
         search_delay_ms: int = 300,
         context_menu_shortcut: Optional[str] = "<Control>j",
         global_context_menu_shortcut: Optional[str] = "<Control><Shift>j",

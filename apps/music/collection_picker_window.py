@@ -37,7 +37,6 @@ class CollectionPickerWindow(PickerWindow):
             title="Add to Collection",
             search_placeholder="Search or create collection...",
             context_menu_shortcut=None,
-            window_size=(400, 500),
             **kwargs,
         )
         self.set_transient_for(parent_window)
