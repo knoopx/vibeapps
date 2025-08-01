@@ -34,6 +34,12 @@ A fast GTK4 file picker for scripts and automation. Reads grouped file lists fro
 
 ![File Picker](apps/file-picker/screenshot.png)
 
+### [Image Picker](apps/image-picker/README.md)
+
+A fast GTK4 image picker for scripts and automation. Reads grouped image lists from stdin, displays each group as a row with a grid of image thumbnails and checkboxes for multi-selection, and prints selected images to stdout. Designed for keyboard navigation and integration into shell workflows.
+
+![Image Picker](apps/image-picker/screenshot.png)
+
 ### [Music](apps/music/README.md)
 
 A music library manager with intelligent scanning, automatic metadata extraction, custom collections, star ratings, and advanced filtering.
@@ -163,6 +169,7 @@ The following programs can be enabled individually:
 - `webkit-shell` - Minimal web browser for wrapping web applications
 - `windows` - Window manager for niri with focus/close actions
 - `wireless-networks` - WiFi network manager with connection and security management
+- `image-picker` - Image picker with grid-based multi-selection for scripts and automation
 - `md2html` - Advanced markdown to HTML converter
 
 ### Example Configuration
